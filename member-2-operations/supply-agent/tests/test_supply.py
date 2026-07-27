@@ -13,7 +13,8 @@ async def test_analyze_supply_endpoint(client: AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert data["supplier_name"] == "Supplier X"
-    assert "supplier_delay" in data
-    assert "delay_days" in data
-    assert "risk" in data
-    assert "recommended_supplier" in data
+    assert data["supplier_delay"] is True
+    assert data["delay_days"] == 2
+    assert data["risk"] == "LOW"
+    assert data["recommended_supplier"] == "Supplier A"
+
