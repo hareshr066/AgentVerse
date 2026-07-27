@@ -1,2 +1,3 @@
-# Export all service classes
-# from app.services.inventory import InventoryService
+from app.services.inventory_service import InventoryService
+
+__all__ = ["InventoryService"]
