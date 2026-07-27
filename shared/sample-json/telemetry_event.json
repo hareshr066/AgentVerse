@@ -1,0 +1,8 @@
+{
+  "event_id": "evt-7721-a",
+  "timestamp": "2026-07-27T15:45:00Z",
+  "sensor_id": "temp-sensor-line-3",
+  "metric": "temperature_celsius",
+  "value": 92.4,
+  "alert": true
+}

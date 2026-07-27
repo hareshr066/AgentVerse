@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: manusphere-db
+    environment:
+      POSTGRES_DB: manusphere
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - manusphere-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: manusphere-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - manusphere-net
+
+  event-agent:
+    build: ./member-1-ai-intelligence/event-agent
+    container_name: event-agent
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/manusphere
+    depends_on:
+      - db
+    networks:
+      - manusphere-net
+
+  demand-agent:
+    build: ./member-1-ai-intelligence/demand-agent
+    container_name: demand-agent
+    ports:
+      - "8002:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/manusphere
+    depends_on:
+      - db
+    networks:
+      - manusphere-net
+
+  inventory-agent:
+    build: ./member-2-operations/inventory-agent
+    container_name: inventory-agent
+    ports:
+      - "8003:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/manusphere
+    depends_on:
+      - db
+    networks:
+      - manusphere-net
+
+  supply-agent:
+    build: ./member-2-operations/supply-agent
+    container_name: supply-agent
+    ports:
+      - "8004:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/manusphere
+    depends_on:
+      - db
+    networks:
+      - manusphere-net
+
+  production-agent:
+    build: ./member-3-decision-engine/production-agent
+    container_name: production-agent
+    ports:
+      - "8005:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/manusphere
+    depends_on:
+      - db
+    networks:
+      - manusphere-net
+
+  recommendation-agent:
+    build: ./member-3-decision-engine/recommendation-agent
+    container_name: recommendation-agent
+    ports:
+      - "8006:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/manusphere
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - db
+    networks:
+      - manusphere-net
+
+  orchestrator:
+    build: ./orchestrator
+    container_name: orchestrator-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/manusphere
+    depends_on:
+      - db
+    networks:
+      - manusphere-net
+
+  frontend:
+    build: ./member-3-decision-engine/frontend
+    container_name: manusphere-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - orchestrator
+    networks:
+      - manusphere-net
+
+volumes:
+  pgdata:
+
+networks:
+  manusphere-net:
+    driver: bridge

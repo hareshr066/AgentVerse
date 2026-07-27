@@ -1,0 +1,9 @@
+{
+  "target_month": "August-2026",
+  "forecasted_demand_units": 15000,
+  "confidence_score": 0.94,
+  "top_drivers": [
+    "seasonal_increase",
+    "automotive_subcontracts"
+  ]
+}
