@@ -7,7 +7,7 @@ class SupplyService:
         delay_days = max(0, raw_delay)
         
         risk = self._calculate_supplier_risk(raw_delay)
-        recommended_supplier = "Supplier A"
+        recommended_supplier = self._recommend_supplier(risk, request.supplier_name)
         
         return SupplyResponse(
             supplier_name=request.supplier_name,
@@ -31,3 +31,18 @@ class SupplyService:
             return "MEDIUM"
         else:
             return "HIGH"
+
+    def _recommend_supplier(self, risk: str, current_supplier: str) -> str:
+        """
+        Recommends alternate supplier based on risk level.
+        Rules:
+        - HIGH: Global Electronics Ltd
+        - MEDIUM: ABC Components
+        - LOW: current supplier name
+        """
+        if risk == "HIGH":
+            return "Global Electronics Ltd"
+        elif risk == "MEDIUM":
+            return "ABC Components"
+        else:
+            return current_supplier
