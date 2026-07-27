@@ -1,10 +1,15 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "ManuSphere Inventory Agent"
+    PROJECT_NAME: str = "inventory-agent"
     VERSION: str = "1.0.0"
-    API_V1_STR: str = "/api/v1"
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@db:5432/manusphere"
+    API_PREFIX: str = "/api/v1"
+    
+    # Database Configuration
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/manusphere"
+    
+    # CORS Configuration
+    ALLOWED_ORIGINS: list[str] = ["*"]
 
     class Config:
         env_file = ".env"

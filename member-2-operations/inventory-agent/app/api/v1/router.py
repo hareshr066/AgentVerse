@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import status
 
 api_router = APIRouter()
-api_router.include_router(status.router, prefix="/status", tags=["status"])
+
+# Future endpoints will be registered here, e.g.:
+# api_router.include_router(inventory.router, prefix="/inventory", tags=["Inventory"])
