@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@db:5432/manusphere"
     PORT: Optional[int] = None
+    GEMINI_API_KEY: str = ""
+    EVENT_AGENT_URL: str = "http://localhost:8001"
+    INVENTORY_AGENT_URL: str = "http://localhost:8002"
 
     model_config = SettingsConfigDict(
         env_file=".env",

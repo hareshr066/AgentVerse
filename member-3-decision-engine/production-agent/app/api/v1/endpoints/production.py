@@ -6,6 +6,12 @@ from app.models.production_plan import ProductionPlan
 from pydantic import BaseModel
 from typing import List, Optional
 
+from app.schemas.production_request import ProductionPlanRequest
+from app.schemas.production_response import ProductionPlanResponse as CalculatorPlanResponse
+from app.services.production_service import ProductionPlannerService
+from app.core.logging import logger
+from app.core.exceptions import ProductionValidationError, ProductionCalculationError, SchedulerError
+
 router = APIRouter()
 
 class ProductionPlanCreate(BaseModel):
@@ -85,3 +91,51 @@ async def create_plan(plan: ProductionPlanCreate, db: AsyncSession = Depends(get
     await db.commit()
     await db.refresh(new_plan)
     return new_plan
+
+@router.post(
+    "/production-plan",
+    response_model=CalculatorPlanResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate a production plan",
+    description=(
+        "Accepts demand forecast, inventory levels, supplier status, and capacity "
+        "parameters.  Returns a fully computed production plan including quantity, "
+        "timeline, capacity utilization, priority classification, and per-machine schedule."
+    ),
+    tags=["Production Planning"],
+)
+def create_production_plan(request: ProductionPlanRequest) -> CalculatorPlanResponse:
+    logger.info(
+        "POST /production-plan — product='%s'", request.product
+    )
+
+    try:
+        service = ProductionPlannerService()
+        plan = service.generate_plan(request)
+        logger.info(
+            "Production plan returned — qty=%d | priority=%s",
+            plan.production_quantity,
+            plan.priority,
+        )
+        return plan
+
+    except ProductionValidationError as exc:
+        logger.warning("Validation error: %s", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    except (ProductionCalculationError, SchedulerError) as exc:
+        logger.error("Calculation/scheduler error: %s", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        logger.error("Unexpected error in production plan: %s", str(exc), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while generating the production plan.",
+        ) from exc

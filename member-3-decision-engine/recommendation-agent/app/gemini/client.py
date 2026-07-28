@@ -1,25 +1,44 @@
 import os
-from google import genai
+import httpx
+import logging
+from app.core.config import settings
+
+logger = logging.getLogger("recommendation_agent.gemini")
 
 class GeminiClient:
-    def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        if self.api_key and self.api_key not in ["your-gemini-api-key-here", "your_gemini_api_key_here"]:
-            try:
-                self.client = genai.Client(api_key=self.api_key)
-            except Exception:
-                self.client = None
-        else:
-            self.client = None
+    def __init__(self) -> None:
+        self.api_key = settings.GEMINI_API_KEY
 
-    async def get_recommendation(self, prompt: str) -> str:
-        if not self.client:
-            return "Mock AI Recommendation: Ensure inventory levels match production forecast to optimize manufacturing efficiency."
+    def is_available(self) -> bool:
+        return bool(self.api_key and self.api_key not in ["your-gemini-api-key-here", "your_gemini_api_key_here"])
+
+    async def get_recommendation(self, prompt: str) -> str | None:
+        if not self.is_available():
+            logger.debug("Gemini/Grok client offline — skipping AI call.")
+            return None
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "model": "grok-2",
+            "temperature": 0.2,
+        }
+
         try:
-            response = self.client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=prompt,
-            )
-            return response.text if response.text else "No content generated."
-        except Exception as e:
-            return f"Gemini Error: {str(e)}"
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post("https://api.x.ai/v1/chat/completions", headers=headers, json=payload)
+                if response.status_code != 200:
+                    logger.error("xAI Grok API returned status code %s", response.status_code)
+                    return None
+                
+                res_json = response.json()
+                raw_content = res_json["choices"][0]["message"]["content"].strip()
+                return raw_content
+        except Exception as exc:
+            logger.error("xAI Grok API call failed: %s", exc)
+            return None

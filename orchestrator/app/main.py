@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from app.routers import router as workflow_router
 from app.config import settings
@@ -15,6 +16,14 @@ logger = logging.getLogger("orchestrator")
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(workflow_router)
