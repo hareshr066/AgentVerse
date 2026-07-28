@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { agents, pipeline, platformFeatures, agentMap } from '../data/agents.jsx';
 import { AgentChart } from '../components/widgets.jsx';
+import { SplineScene } from '../components/SplineScene.jsx';
 
 const overviewSeries = [
   { name: '08:00', primary: 120, secondary: 100 },
@@ -39,20 +40,32 @@ export default function Overview() {
             <a href="#agents" className="btn-ghost">Explore agents <ArrowRight size={15} /></a>
           </div>
         </div>
-        <div className="hero-stats">
-          {[
-            { k: '6', v: 'Active Agents' },
-            { k: '88.4%', v: 'OEE' },
-            { k: '12.4k', v: 'Events / min' },
-            { k: '81%', v: 'Rec. Adoption' },
-          ].map((s) => (
-            <div key={s.v} className="hero-stat">
-              <strong>{s.k}</strong>
-              <span>{s.v}</span>
-            </div>
-          ))}
+        <div className="hero-3d">
+          <SplineScene
+            scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
+            className="w-full h-full"
+          />
         </div>
       </section>
+
+      <div className="hero-stats-row">
+        {[
+          { k: '6', v: 'Active Agents' },
+          { k: '88.4%', v: 'OEE' },
+          { k: '12.4k', v: 'Events / min' },
+          { k: '81%', v: 'Rec. Adoption' },
+        ].map((s, index) => {
+          const floatClass = `float-w${((index + 2) % 6) + 1}`;
+          return (
+            <div className={floatClass} key={s.v} style={{ height: '100%' }}>
+              <div className="hero-stat" style={{ height: '100%' }}>
+                <strong>{s.k}</strong>
+                <span>{s.v}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       <div className="grid">
         <div className="card span-8">
@@ -87,31 +100,34 @@ export default function Overview() {
       </section>
 
       <div className="agent-grid">
-        {agents.map((a) => {
+        {agents.map((a, index) => {
           const Icon = a.icon;
+          const floatClass = `float-w${(index % 6) + 1}`;
           return (
-            <Link to={`/agents/${a.id}`} key={a.id} className={`agent-card card-anim-${a.anim}`}
-              style={{ '--accent': a.accent }}>
-              <div className="agent-card-glow" />
-              <div className="agent-card-top">
-                <div className="agent-icon" style={{ background: `${a.accent}1a`, color: a.accent }}>
-                  <Icon size={22} className={`agent-anim anim-${a.anim}`} />
-                </div>
-                <span className="status-badge status-online">Online</span>
-              </div>
-              <h3>{a.name}</h3>
-              <p className="agent-tagline">{a.tagline}</p>
-              <div className="agent-card-metrics">
-                {a.metrics.slice(0, 2).map((m) => (
-                  <div key={m.label}>
-                    <strong style={{ color: a.accent }}>{m.value}</strong>
-                    <span>{m.label}</span>
+            <div className={floatClass} key={a.id} style={{ height: '100%' }}>
+              <Link to={`/agents/${a.id}`} className={`agent-card card-anim-${a.anim}`}
+                style={{ '--accent': a.accent, height: '100%' }}>
+                <div className="agent-card-glow" />
+                <div className="agent-card-top">
+                  <div className="agent-icon" style={{ background: `${a.accent}1a`, color: a.accent }}>
+                    <Icon size={22} className={`agent-anim anim-${a.anim}`} />
                   </div>
-                ))}
-              </div>
-              <span className="agent-card-owner">{a.owner}</span>
-              <span className="agent-card-link">Open console <ArrowRight size={15} /></span>
-            </Link>
+                  <span className="status-badge status-online">Online</span>
+                </div>
+                <h3>{a.name}</h3>
+                <p className="agent-tagline">{a.tagline}</p>
+                <div className="agent-card-metrics">
+                  {a.metrics.slice(0, 2).map((m) => (
+                    <div key={m.label}>
+                      <strong style={{ color: a.accent }}>{m.value}</strong>
+                      <span>{m.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <span className="agent-card-owner">{a.owner}</span>
+                <span className="agent-card-link">Open console <ArrowRight size={15} /></span>
+              </Link>
+            </div>
           );
         })}
       </div>

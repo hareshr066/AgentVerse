@@ -28,7 +28,7 @@ export function AgentChart({ agent, type = 'area', height = 260 }) {
 
   const axes = (
     <>
-      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
       <XAxis dataKey="name" stroke="var(--text-secondary)" fontSize={12} tickLine={false} axisLine={false} />
       <YAxis stroke="var(--text-secondary)" fontSize={12} tickLine={false} axisLine={false} width={38} />
       <Tooltip
