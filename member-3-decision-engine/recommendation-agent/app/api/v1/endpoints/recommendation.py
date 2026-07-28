@@ -16,6 +16,8 @@ async def analyze_recommendations(request: Dict[str, Any]):
     result = await rec_service.get_combined_recommendation(request)
     return result
 
+@router.post("/recommendation/generate", response_model=RecommendationResponse, status_code=status.HTTP_200_OK, tags=["Recommendations"])
+@router.post("/generate", response_model=RecommendationResponse, status_code=status.HTTP_200_OK, tags=["Recommendations"])
 @router.post(
     "/recommend",
     response_model=RecommendationResponse,

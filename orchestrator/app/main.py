@@ -1,3 +1,12 @@
+import sys
+import os
+
+# Fix Python path for shared module if not already set
+_current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_parent_root = os.path.abspath(os.path.join(_current_dir, ".."))
+if _parent_root not in sys.path:
+    sys.path.insert(0, _parent_root)
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
@@ -12,6 +21,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger("orchestrator")
+
 
 app = FastAPI(
     title=settings.APP_NAME,
