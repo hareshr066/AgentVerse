@@ -1,44 +1,160 @@
-# ManuSphere AI – Multi-Agent Manufacturing Intelligence Platform
+# ManuSphere AI – AI-Powered Multi-Agent Manufacturing Intelligence Platform
 
-## Project Overview
-ManuSphere AI is a state-of-the-art, scalable, multi-agent manufacturing intelligence platform designed for hackathons and production scaling. It aggregates telemetry events, computes demand forecasts, cross-references inventory and supply chain logs, structures production schedules, and yields AI-powered optimizations via Google's Gemini API.
-
----
-
-## 📂 Project Architecture Structure
-
-- **`member-1-ai-intelligence/`**: Managed by Member 1. Hosts the Event Parsing Agent and Demand Forecast Agent.
-- **`member-2-operations/`**: Managed by Member 2. Hosts the Inventory Agent and Supply Procurement Agent.
-- **`member-3-decision-engine/`**: Managed by Member 3. Hosts the Production Scheduler Agent, Gemini Recommendation Agent, and the React + Vite Frontend.
-- **`orchestrator/`**: The system API Gateway. Controls communication and triggers pipelines across agents.
-- **`shared/`**: Common artifacts: database schemas, API contracts, JSON telemetry samples, global configurations.
-- **`docs/`**: Project documentation, architectural patterns, API specs, and team meeting summaries.
+ManuSphere AI is a premium, real-time distributed intelligence platform for factory orchestration. It coordinates six microservices through an Orchestrator Gateway, leveraging LLM auditing, event broker feeds, demand forecasting, and inventory runways to drive modern automated supply chains.
 
 ---
 
-## 🚀 Running the Project
+## 🗺️ 1. Architecture Diagram
 
-### Prerequisites
-- Docker & Docker Compose
-- Node.js & Python 3.11 (if developing locally)
+```mermaid
+graph TD
+    User([Factory Operator / Client]) <-->|HTTPS / React App| Port8000[Orchestrator Gateway: Port 8000]
+    
+    subgraph AI Intelligence Layer
+        Port8001[Event Broker Agent: Port 8001]
+        Port8002[Demand Forecast Agent: Port 8002]
+    end
 
-### Setup & Startup
-1. Set up your environment variable file by adding your Gemini API key in your main configuration or `.env`:
-   ```bash
-   export GEMINI_API_KEY="your_actual_key_here"
+    subgraph Operations Layer
+        Port8003[Inventory Agent: Port 8003]
+        Port8004[Supply Procurement Agent: Port 8004]
+    end
+
+    subgraph Decision Engine
+        Port8005[Production Scheduler: Port 8005]
+        Port8006[AI Recommendation Agent: Port 8006]
+    end
+    
+    subgraph Data Layer
+        DB[(Shared Neon Postgres Cloud / SQLite Fallback)]
+    end
+
+    Port8000 <-->|Async REST API| Port8001
+    Port8000 <-->|Async REST API| Port8002
+    Port8000 <-->|Async REST API| Port8003
+    Port8000 <-->|Async REST API| Port8004
+    Port8000 <-->|Async REST API| Port8005
+    Port8000 <-->|Async REST API| Port8006
+
+    Port8003 <--> DB
+    Port8004 <--> DB
+    Port8002 <--> DB
+    Port8005 <--> DB
+```
+
+---
+
+## 🚀 2. Startup Commands
+
+### Option A: Local Process Launch (Recommended for Development)
+Run each command in its own terminal instance:
+
+1. **Inventory Agent (Port 8003)**
+   ```powershell
+   cd member-2-operations/inventory-agent
+   .venv\Scripts\python -m uvicorn app.main:app --port 8003
    ```
-2. Build and run all microservices via Docker Compose:
-   ```bash
-   docker compose up --build
+2. **Supply Agent (Port 8004)**
+   ```powershell
+   cd member-2-operations/supply-agent
+   ..\inventory-agent\.venv\Scripts\python -m uvicorn app.main:app --port 8004
    ```
-3. Open `http://localhost:3000` to inspect the premium analytics dashboard!
+3. **Event Agent (Port 8001)**
+   ```powershell
+   cd member-1-ai-intelligence/event-agent
+   ..\..\member-2-operations\inventory-agent\.venv\Scripts\python -m uvicorn app.main:app --port 8001
+   ```
+4. **Demand Agent (Port 8002)**
+   ```powershell
+   cd member-1-ai-intelligence/demand-agent
+   ..\..\member-2-operations\inventory-agent\.venv\Scripts\python -m uvicorn app.main:app --port 8002
+   ```
+5. **Production Agent (Port 8005)**
+   ```powershell
+   cd member-3-decision-engine/production-agent
+   ..\..\member-2-operations\inventory-agent\.venv\Scripts\python -m uvicorn app.main:app --port 8005
+   ```
+6. **Recommendation Agent (Port 8006)**
+   ```powershell
+   cd member-3-decision-engine/recommendation-agent
+   ..\..\member-2-operations\inventory-agent\.venv\Scripts\python -m uvicorn app.main:app --port 8006
+   ```
+7. **Orchestrator Gateway (Port 8000)**
+   ```powershell
+   cd orchestrator
+   ..\member-2-operations\inventory-agent\.venv\Scripts\python -m uvicorn app.main:app --port 8000
+   ```
+8. **Frontend Client (Port 5173)**
+   ```powershell
+   cd member-3-decision-engine/frontend
+   npm run dev
+   ```
 
 ---
 
-## 🤝 Collaboration Workflow for the Hackathon
-1. **Branching Strategy**: Each member should create branches matching their role prefix:
-   - `member-1/feature-name`
-   - `member-2/feature-name`
-   - `member-3/feature-name`
-2. **Pull Requests**: Pull requests should merge into `main` after standard linting passes and a brief peer review.
-3. **Configuration**: Keep `.env` files locally. Use `.env.example` templates committed in the respective folders for config structure updates.
+## 🐳 3. Docker Commands
+
+Run the entire cluster in isolated container environments:
+
+```bash
+# Build and start all services in detached mode
+docker compose up --build -d
+
+# Check live logs of the orchestrator
+docker compose logs -f orchestrator
+
+# Stop and clean the environment
+docker compose down -v
+```
+
+---
+
+## 🧪 4. Testing & Validation Commands
+
+Execute the end-to-end automated integration suite:
+
+```powershell
+# Verify DB writes, reads, direct endpoints, and 5 Orchestrator workflows:
+python -u scratch/comprehensive_test.py
+```
+
+---
+
+## 📝 5. API Documentation
+
+### Orchestrator Gateway (`127.0.0.1:8000`)
+
+* **`GET /health`**: Aggregated health status of the network. Returns 200 OK.
+* **`POST /workflow/inventory-check`**: Validates stock levels against reorder limits.
+* **`POST /workflow/procurement`**: Generates reorder POs and matches pre-approved suppliers.
+* **`POST /workflow/production`**: Checks material status and schedules jobs.
+* **`POST /workflow/event-analysis`**: Examines external anomalies (weather/news/trends) and forecast impact.
+* **`POST /workflow/full-analysis`**: Full end-to-end factory telemetry crawl with Gemini recommendation report.
+
+---
+
+## 🎙️ 6. Presentation Demo Script
+
+1. **Service Sync Verification**:
+   - Open `http://localhost:5173`.
+   - Show the **Agent Node Connectivity** panel. All nodes will report **Online** with green badges.
+2. **AI Analysis Trigger**:
+   - Locate the **Gemini Intelligence Copilot** card.
+   - Enter `Steel` for Product and `Berlin` for Target City.
+   - Click **Generate AI Recommendation**.
+   - Show the live **Supply Chain Forecast vs Production & Inventory** graph update dynamically with database results.
+   - Present the structured **Executive Summary** and bulleted **Actionable Recommendations** generated by the Gemini model.
+
+---
+
+## ⚠️ 7. Known Limitations & Workarounds
+* **Outbound Port 5432 blocking**: Neon PostgreSQL uses port 5432. If local networks block outbound 5432 traffic, all agents gracefully fallback to `manusphere_fallback.db` locally.
+* **OpenWeather / Google Trends credentials**: Mock fallbacks take over immediately if API credentials are not provided or if Google rate-limits (HTTP 429).
+
+---
+
+## 📋 8. Final Deployment Checklist
+- [x] Run health aggregators on `/health`.
+- [x] Verify fallback SQLite creation in project roots.
+- [x] Verify Pydantic extra parameters allowed for `.env` loading.
+- [x] Bind React fetch requests directly to Port 8000.

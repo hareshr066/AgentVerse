@@ -14,7 +14,7 @@ async def get_event_score(
     news_articles = await fetch_news(product, city)
     weather_data = await fetch_weather(city)
     trends_data = await fetch_trends(product)
-    analysis_data = await analyze_event(news_articles, weather_data, trends_data)
+    analysis_data = await analyze_event(news_articles, weather_data, trends_data, product, city)
 
     return {
         "news": news_articles,

@@ -32,6 +32,17 @@ async def workflow_production(
 ):
     return await services.run_production_workflow(client, plan_id=payload.plan_id)
 
+@router.post("/event-analysis", status_code=status.HTTP_200_OK)
+async def workflow_event_analysis(
+    payload: FullAnalysisRequest,
+    client: httpx.AsyncClient = Depends(get_http_client)
+):
+    return await services.run_event_analysis_workflow(
+        client,
+        product=payload.product,
+        city=payload.city
+    )
+
 @router.post("/full-analysis", status_code=status.HTTP_200_OK)
 async def workflow_full_analysis(
     payload: FullAnalysisRequest,

@@ -1,5 +1,6 @@
 import httpx
 import logging
+import asyncio
 from typing import Any, Dict, List, Optional
 from app.config import settings
 
@@ -35,9 +36,9 @@ async def call_agent(
                 return {"error": "Agent unreachable", "detail": str(e)}
     return {"error": "Unknown error calling agent"}
 
-# 1. Inventory Check Workflow
+# 1. Inventory Check Workflow (Workflow 1)
 async def run_inventory_check_workflow(client: httpx.AsyncClient, product_name: Optional[str] = None) -> Dict[str, Any]:
-    # Call Inventory Agent to list all inventories
+    logger.info("Starting Workflow 1: Inventory Check")
     inventory_res = await call_agent(client, "GET", f"{settings.INVENTORY_AGENT_URL}/inventory/")
     
     if "error" in inventory_res or not isinstance(inventory_res, list):
@@ -51,7 +52,6 @@ async def run_inventory_check_workflow(client: httpx.AsyncClient, product_name: 
     low_stock_items = []
     
     for item in inventory_res:
-        # Check if matches optional filter
         name = item.get("product_name", "")
         if product_name and product_name.lower() not in name.lower():
             continue
@@ -66,11 +66,9 @@ async def run_inventory_check_workflow(client: httpx.AsyncClient, product_name: 
             "reorder_point": reorder_point,
             "status": item.get("status")
         }
-        
         items_checked.append(status_info)
         
         if current_stock < reorder_point:
-            # Low stock! Call Supply Agent to fetch recommended suppliers
             suppliers = await call_agent(client, "GET", f"{settings.SUPPLY_AGENT_URL}/suppliers/recommended")
             status_info["suppliers_recommended"] = suppliers
             low_stock_items.append(status_info)
@@ -83,9 +81,9 @@ async def run_inventory_check_workflow(client: httpx.AsyncClient, product_name: 
         "low_stock_items": low_stock_items
     }
 
-# 2. Procurement Workflow
+# 2. Procurement Workflow (Workflow 2)
 async def run_procurement_workflow(client: httpx.AsyncClient, material_name: str, quantity_needed: int) -> Dict[str, Any]:
-    # Fetch all suppliers matching the material name
+    logger.info("Starting Workflow 2: Procurement for %s", material_name)
     suppliers = await call_agent(client, "GET", f"{settings.SUPPLY_AGENT_URL}/suppliers/")
     
     matched_suppliers = []
@@ -98,7 +96,6 @@ async def run_procurement_workflow(client: httpx.AsyncClient, material_name: str
                 if s.get("recommended", False):
                     recommended_suppliers.append(s)
                     
-    # Also fetch safety stock and current stock levels from Inventory Agent
     inventory = await call_agent(client, "GET", f"{settings.INVENTORY_AGENT_URL}/inventory/")
     current_inventory_info = None
     if isinstance(inventory, list):
@@ -115,9 +112,15 @@ async def run_procurement_workflow(client: httpx.AsyncClient, material_name: str
         "recommended_suppliers": recommended_suppliers if recommended_suppliers else matched_suppliers[:2]
     }
 
-# 3. Production Workflow
+# 3. Manufacturing Planning Workflow (Workflow 3)
+# Demand Agent -> Production Agent -> Inventory Agent -> Supply Agent -> Recommendation Agent
 async def run_production_workflow(client: httpx.AsyncClient, plan_id: Optional[int] = None) -> Dict[str, Any]:
-    # Call Production Agent to get requirements/plans
+    logger.info("Starting Workflow 3: Manufacturing Planning")
+    
+    # Step A: Fetch Forecasts from Demand Agent
+    demand_forecasts = await call_agent(client, "GET", f"{settings.DEMAND_AGENT_URL}/forecast/")
+    
+    # Step B: Fetch Production Plans from Production Agent
     prod_plans = await call_agent(
         client,
         "GET",
@@ -125,18 +128,15 @@ async def run_production_workflow(client: httpx.AsyncClient, plan_id: Optional[i
     )
     
     if "error" in prod_plans:
-        # Graceful fallback if Production Agent is offline/empty
         prod_plans = [{"id": plan_id or 1, "product_name": "Standard Steel Sheets", "quantity": 1000, "status": "PLANNED", "materials_needed": ["Iron Ore", "Coal"]}]
         
     results = []
-    
-    # Process each plan
     for plan in prod_plans if isinstance(prod_plans, list) else [prod_plans]:
         materials_status = []
         materials_needed = plan.get("materials_needed", ["Raw Iron", "Carbon Alloy"])
         
         for material in materials_needed:
-            # Query Inventory Agent for this material
+            # Step C: Query Inventory Agent for material
             inv_item = None
             inventory = await call_agent(client, "GET", f"{settings.INVENTORY_AGENT_URL}/inventory/")
             if isinstance(inventory, list):
@@ -145,7 +145,7 @@ async def run_production_workflow(client: httpx.AsyncClient, plan_id: Optional[i
                         inv_item = item
                         break
             
-            # Query Supply Agent for suppliers of this material
+            # Step D: Query Supply Agent for suppliers
             suppliers = await call_agent(client, "GET", f"{settings.SUPPLY_AGENT_URL}/suppliers/")
             matched_suppliers = []
             if isinstance(suppliers, list):
@@ -157,8 +157,9 @@ async def run_production_workflow(client: httpx.AsyncClient, plan_id: Optional[i
                 "suppliers": matched_suppliers
             })
             
-        # Get AI recommendation from Recommendation Agent
+        # Step E: Send telemetry to Recommendation Agent to analyze recommendations
         recommendation_payload = {
+            "demand_forecasts": demand_forecasts,
             "production_plan": plan,
             "materials_status": materials_status
         }
@@ -177,17 +178,44 @@ async def run_production_workflow(client: httpx.AsyncClient, plan_id: Optional[i
         
     return {
         "status": "success",
+        "demand_forecasts": demand_forecasts,
         "production_workflow_results": results
     }
 
-# 4. Full Analysis Workflow
+# 4. External Event Analysis Workflow (Workflow 4)
+# Event Agent -> Demand Agent -> Recommendation Agent
+async def run_event_analysis_workflow(client: httpx.AsyncClient, product: str, city: str) -> Dict[str, Any]:
+    logger.info("Starting Workflow 4: External Event Analysis")
+    
+    event_data = await call_agent(client, "GET", f"{settings.EVENT_AGENT_URL}/event-score", params={"product": product, "city": city})
+    demand_forecasts = await call_agent(client, "GET", f"{settings.DEMAND_AGENT_URL}/forecast/")
+    
+    recommendation_payload = {
+        "event_context": event_data,
+        "demand_forecasts": demand_forecasts
+    }
+    
+    ai_recommendation = await call_agent(
+        client,
+        "POST",
+        f"{settings.RECOMMENDATION_AGENT_URL}/recommendations/analyze",
+        json_data=recommendation_payload
+    )
+    
+    return {
+        "status": "success",
+        "event_analysis": event_data,
+        "demand_forecasts": demand_forecasts,
+        "business_impact_analysis": ai_recommendation
+    }
+
+# 5. Full Analysis Workflow (Workflow 5)
 async def run_full_analysis_workflow(client: httpx.AsyncClient, product: str, city: str) -> Dict[str, Any]:
-    # Call all 6 agents in parallel or sequentially using async tasks
-    import asyncio
+    logger.info("Starting Workflow 5: Full Analysis")
     
     tasks = [
         call_agent(client, "GET", f"{settings.EVENT_AGENT_URL}/event-score", params={"product": product, "city": city}),
-        call_agent(client, "GET", f"{settings.DEMAND_AGENT_URL}/api/v1/status/"),
+        call_agent(client, "GET", f"{settings.DEMAND_AGENT_URL}/forecast/"),
         call_agent(client, "GET", f"{settings.INVENTORY_AGENT_URL}/inventory/"),
         call_agent(client, "GET", f"{settings.SUPPLY_AGENT_URL}/suppliers/"),
         call_agent(client, "GET", f"{settings.PRODUCTION_AGENT_URL}/production-plans/"),
@@ -201,10 +229,9 @@ async def run_full_analysis_workflow(client: httpx.AsyncClient, product: str, ci
     supply_data = responses[3] if not isinstance(responses[3], Exception) else {"error": "Failed calling Supply Agent"}
     production_data = responses[4] if not isinstance(responses[4], Exception) else {"error": "Failed calling Production Agent"}
     
-    # Pass consolidated metrics to Recommendation Agent
     recommendation_payload = {
         "event_context": event_data,
-        "demand_status": demand_data,
+        "demand_forecasts": demand_data,
         "inventory": inventory_data,
         "suppliers": supply_data,
         "production_plans": production_data
@@ -226,4 +253,55 @@ async def run_full_analysis_workflow(client: httpx.AsyncClient, product: str, ci
         "supply_status": supply_data,
         "production_status": production_data,
         "overall_recommendation": recommendation
+    }
+
+# 6. Health Aggregator (Step 9)
+async def get_health_status(client: httpx.AsyncClient) -> Dict[str, Any]:
+    logger.info("Aggregating health monitoring statuses...")
+    
+    # Ping status/health endpoint for each agent
+    tasks = [
+        call_agent(client, "GET", f"{settings.EVENT_AGENT_URL}/status/"),
+        call_agent(client, "GET", f"{settings.DEMAND_AGENT_URL}/"),
+        call_agent(client, "GET", f"{settings.INVENTORY_AGENT_URL}/health"),
+        call_agent(client, "GET", f"{settings.SUPPLY_AGENT_URL}/health"),
+        call_agent(client, "GET", f"{settings.PRODUCTION_AGENT_URL}/"),
+        call_agent(client, "GET", f"{settings.RECOMMENDATION_AGENT_URL}/"),
+    ]
+    
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    def parse_health(res: Any) -> str:
+        if isinstance(res, dict) and "error" not in res:
+            return "healthy"
+        return "unhealthy"
+
+    event_health = parse_health(responses[0])
+    demand_health = parse_health(responses[1])
+    inventory_health = parse_health(responses[2])
+    supply_health = parse_health(responses[3])
+    production_health = parse_health(responses[4])
+    recommendation_health = parse_health(responses[5])
+    
+    # Determine DB status based on Inventory/Supply agents since they hit DB
+    db_status = "healthy"
+    for r in [responses[2], responses[3]]:
+        if isinstance(r, dict) and r.get("detail") == "Database fetch failed.":
+            db_status = "unhealthy"
+            
+    agents_status = [event_health, demand_health, inventory_health, supply_health, production_health, recommendation_health]
+    overall_status = "healthy" if all(s == "healthy" for s in agents_status) and db_status == "healthy" else "degraded"
+    
+    return {
+        "status": overall_status,
+        "services": {
+            "orchestrator": "healthy",
+            "event_agent": event_health,
+            "demand_agent": demand_health,
+            "inventory_agent": inventory_health,
+            "supply_agent": supply_health,
+            "production_agent": production_health,
+            "recommendation_agent": recommendation_health,
+            "database": db_status
+        }
     }

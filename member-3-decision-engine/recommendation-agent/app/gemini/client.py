@@ -1,20 +1,25 @@
 import os
-import google.generativeai as genai
+from google import genai
 
 class GeminiClient:
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if api_key:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        if self.api_key and self.api_key not in ["your-gemini-api-key-here", "your_gemini_api_key_here"]:
+            try:
+                self.client = genai.Client(api_key=self.api_key)
+            except Exception:
+                self.client = None
         else:
-            self.model = None
+            self.client = None
 
     async def get_recommendation(self, prompt: str) -> str:
-        if not self.model:
+        if not self.client:
             return "Mock AI Recommendation: Ensure inventory levels match production forecast to optimize manufacturing efficiency."
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
+            response = self.client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt,
+            )
+            return response.text if response.text else "No content generated."
         except Exception as e:
             return f"Gemini Error: {str(e)}"
