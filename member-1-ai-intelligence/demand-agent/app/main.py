@@ -1,12 +1,37 @@
+import sys
+import os
+
+# Fix Python path for shared module if not already set
+_current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_parent_root = os.path.abspath(os.path.join(_current_dir, "..", ".."))
+if _parent_root not in sys.path:
+    sys.path.insert(0, _parent_root)
+
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
+from app.api.v1.endpoints import forecast
 from app.core.config import settings
+from app.core.database import Base, engine
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Automatically initialize db schema on startup
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception:
+        pass
+    yield
+    await engine.dispose()
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description=f"{settings.PROJECT_NAME} - ManuSphere AI Intelligence Module",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -18,7 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
-app.include_router(api_router)
+app.include_router(forecast.router, prefix="/forecast", tags=["forecast"])
 
 @app.get("/")
 async def root():

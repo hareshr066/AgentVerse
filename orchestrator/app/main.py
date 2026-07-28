@@ -1,12 +1,31 @@
-from fastapi import FastAPI
+import sys
+import os
+
+# Fix Python path for shared module if not already set
+_current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_parent_root = os.path.abspath(os.path.join(_current_dir, ".."))
+if _parent_root not in sys.path:
+    sys.path.insert(0, _parent_root)
+
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.router import api_router
-from app.core.config import settings
+import httpx
+from app.routers import router as workflow_router
+from app.config import settings
+from app.dependencies import get_http_client
+import app.services as services
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("orchestrator")
+
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    description=f"{settings.PROJECT_NAME} - Multi-Agent Orchestrator Gateway",
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
 )
 
 app.add_middleware(
@@ -17,9 +36,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router, prefix=settings.API_V1_STR)
-app.include_router(api_router)
+app.include_router(workflow_router)
 
 @app.get("/")
-async def root():
-    return {"message": f"Welcome to {settings.PROJECT_NAME}"}
+def read_root():
+    return {
+        "service": settings.APP_NAME,
+        "status": "running"
+    }
+
+@app.get("/health")
+async def get_health(client: httpx.AsyncClient = Depends(get_http_client)):
+    return await services.get_health_status(client)

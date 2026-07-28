@@ -3,13 +3,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.config import settings
 
-logger = logging.getLogger("inventory-agent.database")
+logger = logging.getLogger("supply-agent.database")
 
 db_url = settings.DATABASE_URL
 if db_url.startswith("postgresql+asyncpg://"):
     db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
-# Resilient connection strategy: Try Neon, fallback to SQLite if network is blocked
 try:
     logger.info("Attempting connection to Neon database: %s", db_url)
     engine = create_engine(
