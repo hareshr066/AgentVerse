@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/manusphere"
+    DATABASE_URL: str
     PORT: int = 8000
     
     APP_NAME: str = "Inventory Agent"

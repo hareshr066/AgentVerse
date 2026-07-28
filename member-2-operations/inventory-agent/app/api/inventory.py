@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, status
-from app.schemas import InventoryRequest, InventoryResponse
+from app.schemas import InventoryRequest, LegacyInventoryResponse
 from app.services import InventoryService
 from app.core import logger, InventoryCalculationError
 
 router = APIRouter(tags=["Inventory"])
 
-@router.post("/inventory/calculate", response_model=InventoryResponse)
-def calculate_inventory(request: InventoryRequest) -> InventoryResponse:
+@router.post("/inventory/calculate", response_model=LegacyInventoryResponse)
+def calculate_inventory(request: InventoryRequest) -> LegacyInventoryResponse:
     try:
         service = InventoryService()
         return service.calculate_inventory(request)
