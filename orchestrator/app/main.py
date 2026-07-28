@@ -6,7 +6,7 @@ from app.core.config import settings
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description=f"{settings.PROJECT_NAME} - ManuSphere AI Intelligence Module",
+    description=f"{settings.PROJECT_NAME} - Multi-Agent Orchestrator Gateway",
 )
 
 app.add_middleware(
@@ -18,6 +18,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router)
 
 @app.get("/")
 async def root():
