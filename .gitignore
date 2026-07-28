@@ -71,13 +71,9 @@ dist-ssr/
 *.sln
 *.sw?
 
-# OS Files
-.DS_Store
-Thumbs.db
-
 # Docker
 .docker/
 
-# Databases
+# SQLite databases
 *.db
 

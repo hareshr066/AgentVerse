@@ -1,41 +1,7 @@
-"""
-Recommendation Agent - RecommendationService
-
-Core service that generates executive recommendations by analysing data
-from all four upstream agents (Demand, Inventory, Supply, Production).
-
-Architecture:
-    1. Rule-based engine runs first — always produces a valid output.
-    2. If GeminiClient is available (GEMINI_API_KEY set), the AI layer
-       is called to enhance the executive_summary.
-    3. The interface never changes regardless of whether AI is active,
-       so enabling/disabling Gemini requires only an env-var change.
-
-Rule logic:
-    Risk level  →  CRITICAL  : supplier_delay AND delay_days > 5
-                   HIGH      : forecast_demand > current_inventory
-                               OR inventory_status == "LOW"
-                               OR capacity_utilization >= 95 %
-                   MEDIUM    : supplier_delay OR capacity_utilization >= 80 %
-                   LOW       : all conditions normal
-
-    Production  →  if forecast_demand > current_inventory : suggest ramp-up %
-                   if capacity near max               : suggest extra shift
-                   else                               : maintain current pace
-
-    Inventory   →  if current_inventory < safety_stock : immediate replenish
-                   if current_inventory < reorder_point: schedule replenish
-                   else                                : maintain healthy level
-
-    Supplier    →  if supplier_delay AND delay_days > 5 : activate secondary
-                   if supplier_delay                    : monitor closely
-                   else                                 : no action required
-"""
-
 from __future__ import annotations
-
 import re
-from typing import List, Optional
+import logging
+from typing import Dict, Any, List, Optional
 
 from app.schemas.recommendation_request import RecommendationRequest
 from app.schemas.recommendation_response import RecommendationResponse
@@ -44,48 +10,27 @@ from app.prompts.templates import RECOMMENDATION_PROMPT_TEMPLATE
 from app.core.logging import logger
 from app.core.exceptions import RecommendationGenerationError
 
+from app.gemini.base_provider import BaseRecommendationProvider
+from app.gemini.gemini_provider import GeminiRecommendationProvider
+from app.services.prompt_builder import PromptBuilder
+from app.services.response_parser import ResponseParser
 
 class RecommendationService:
-    """
-    Generates holistic manufacturing recommendations from upstream agent data.
-
-    Usage:
-        service = RecommendationService()
-        response = await service.recommend(request)
-    """
-
-    def __init__(self, gemini_client: Optional[GeminiClient] = None) -> None:
-        # Gemini is injected so it can be mocked in tests or swapped later.
-        # If not provided, a new client is created (uses GEMINI_API_KEY env var).
+    def __init__(self, provider: Optional[BaseRecommendationProvider] = None, gemini_client: Optional[GeminiClient] = None):
+        self.provider = provider or GeminiRecommendationProvider()
         self._gemini = gemini_client or GeminiClient()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    async def get_combined_recommendation(self, telemetry: Dict[str, Any]) -> Dict[str, Any]:
+        logger.info("Generating intelligent factory recommendation from telemetry inputs...")
+        prompt = PromptBuilder.build_recommendation_prompt(telemetry)
+        raw_result = await self.provider.generate_recommendations(prompt)
+        parsed_result = ResponseParser.parse_recommendation_response(raw_result)
+        logger.info("Intelligent recommendation generated successfully.")
+        return parsed_result
 
     async def recommend(self, request: RecommendationRequest) -> RecommendationResponse:
-        """
-        Produce a RecommendationResponse from the aggregated agent data.
-
-        Steps:
-            1. Extract key metrics from the request
-            2. Identify risk factors
-            3. Determine overall risk level
-            4. Build rule-based recommendations for each dimension
-            5. Attempt Gemini AI enhancement of the executive summary
-            6. Return assembled RecommendationResponse
-
-        Args:
-            request: Validated RecommendationRequest from the API layer.
-
-        Returns:
-            RecommendationResponse with all five recommendation dimensions.
-
-        Raises:
-            RecommendationGenerationError: If the rule engine fails unexpectedly.
-        """
         logger.info(
-            "Generating recommendations for product='%s' | "
+            "POST /recommend — product='%s' | "
             "forecast=%d | inventory=%d | priority=%s",
             request.demand.product,
             request.demand.forecast_demand,
@@ -94,16 +39,9 @@ class RecommendationService:
         )
 
         try:
-            # ── Step 1: Extract metrics ────────────────────────────────
             metrics = self._extract_metrics(request)
-
-            # ── Step 2: Identify risk factors ──────────────────────────
             risk_factors = self._identify_risk_factors(metrics)
-
-            # ── Step 3: Overall risk level ─────────────────────────────
             risk_level = self._determine_risk_level(metrics, risk_factors)
-
-            # ── Step 4: Rule-based recommendations ─────────────────────
             production_rec = self._recommend_production(metrics)
             inventory_rec = self._recommend_inventory(metrics)
             supplier_rec = self._recommend_supplier(metrics)
@@ -111,7 +49,6 @@ class RecommendationService:
                 metrics, risk_level, risk_factors
             )
 
-            # ── Step 5: Optional Gemini AI enhancement ─────────────────
             ai_enhanced = False
             if self._gemini.is_available():
                 ai_summary = await self._try_ai_enhancement(request, metrics)
@@ -143,15 +80,8 @@ class RecommendationService:
                 f"Failed to generate recommendation: {exc}"
             ) from exc
 
-    # ------------------------------------------------------------------
-    # Metric extraction
-    # ------------------------------------------------------------------
-
     def _extract_metrics(self, request: RecommendationRequest) -> dict:
-        """Flatten nested request into a single metrics dict for easy rule evaluation."""
         supply = request.supply
-
-        # Parse capacity utilization float from string like "96.67%"
         cap_util_str = request.production.capacity_utilization
         try:
             cap_util_float = float(re.sub(r"[^0-9.]", "", cap_util_str))
@@ -174,12 +104,7 @@ class RecommendationService:
             "priority": request.production.priority.upper(),
         }
 
-    # ------------------------------------------------------------------
-    # Risk analysis
-    # ------------------------------------------------------------------
-
     def _identify_risk_factors(self, m: dict) -> List[str]:
-        """Build a list of individual risk factors present in the data."""
         factors: List[str] = []
 
         if m["supplier_delay"] and m["delay_days"] > 5:
@@ -214,7 +139,6 @@ class RecommendationService:
         return factors
 
     def _determine_risk_level(self, m: dict, risk_factors: List[str]) -> str:
-        """Map identified risk factors to an overall risk level."""
         if m["priority"] == "CRITICAL" or (m["supplier_delay"] and m["delay_days"] > 5):
             return "Critical"
 
@@ -237,12 +161,7 @@ class RecommendationService:
 
         return "Low"
 
-    # ------------------------------------------------------------------
-    # Rule-based recommendations
-    # ------------------------------------------------------------------
-
     def _recommend_production(self, m: dict) -> str:
-        """Generate a production-specific recommendation."""
         demand = m["forecast_demand"]
         inventory = m["current_inventory"]
         cap_util = m["capacity_utilization"]
@@ -257,7 +176,7 @@ class RecommendationService:
         if demand > inventory:
             gap = demand - inventory
             increase_pct = round((gap / inventory) * 100) if inventory > 0 else 100
-            increase_pct = min(increase_pct, 50)  # cap suggestion at 50%
+            increase_pct = min(increase_pct, 50)
             return (
                 f"Increase production output by approximately {increase_pct}% to close "
                 f"the {gap:,}-unit demand-inventory gap within the planning period."
@@ -283,7 +202,6 @@ class RecommendationService:
         )
 
     def _recommend_inventory(self, m: dict) -> str:
-        """Generate an inventory management recommendation."""
         current = m["current_inventory"]
         safety = m["safety_stock"]
         reorder = m["reorder_point"]
@@ -324,7 +242,6 @@ class RecommendationService:
         )
 
     def _recommend_supplier(self, m: dict) -> str:
-        """Generate a supplier / procurement recommendation."""
         delay = m["supplier_delay"]
         days = m["delay_days"]
         reliability = m["supplier_reliability"]
@@ -365,7 +282,6 @@ class RecommendationService:
     def _build_executive_summary(
         self, m: dict, risk_level: str, risk_factors: List[str]
     ) -> str:
-        """Build a concise executive summary from key metrics."""
         product = m["product"]
         demand = m["forecast_demand"]
         inventory = m["current_inventory"]
@@ -404,19 +320,9 @@ class RecommendationService:
 
         return " ".join(lines)
 
-    # ------------------------------------------------------------------
-    # Gemini AI enhancement
-    # ------------------------------------------------------------------
-
     async def _try_ai_enhancement(
         self, request: RecommendationRequest, metrics: dict
     ) -> Optional[str]:
-        """
-        Attempt to get an AI-enhanced executive summary from Gemini.
-
-        Returns the AI summary string on success, or None on any failure.
-        The caller always falls back to the rule-based summary if None is returned.
-        """
         try:
             prompt = RECOMMENDATION_PROMPT_TEMPLATE.format(
                 demand=metrics["forecast_demand"],

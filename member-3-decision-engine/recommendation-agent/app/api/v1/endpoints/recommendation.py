@@ -1,12 +1,5 @@
-"""
-Recommendation Agent - /recommend endpoint
-
-POST /recommend
-    Accepts aggregated data from all upstream agents and returns
-    a structured executive recommendation report.
-"""
-
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from typing import Dict, Any
 
 from app.schemas.recommendation_request import RecommendationRequest
 from app.schemas.recommendation_response import RecommendationResponse
@@ -15,7 +8,13 @@ from app.core.logging import logger
 from app.core.exceptions import RecommendationValidationError, RecommendationGenerationError
 
 router = APIRouter()
+rec_service = RecommendationService()
 
+@router.post("/analyze", status_code=status.HTTP_200_OK)
+async def analyze_recommendations(request: Dict[str, Any]):
+    # Generate intelligent structured recommendations from factory inputs
+    result = await rec_service.get_combined_recommendation(request)
+    return result
 
 @router.post(
     "/recommend",
@@ -33,14 +32,6 @@ router = APIRouter()
     tags=["Recommendations"],
 )
 async def get_recommendation(request: RecommendationRequest) -> RecommendationResponse:
-    """
-    Generate a manufacturing recommendation report.
-
-    - **demand**: Demand forecast data (product, forecast_demand)
-    - **inventory**: Current inventory state (current_inventory, safety_stock)
-    - **supply**: Supply chain status — optional (supplier_delay, delay_days)
-    - **production**: Production plan (production_quantity, capacity_utilization, priority)
-    """
     logger.info(
         "POST /recommend — product='%s'", request.demand.product
     )

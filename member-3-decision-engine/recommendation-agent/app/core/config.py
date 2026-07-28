@@ -1,13 +1,18 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "ManuSphere Recommendation Agent"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@db:5432/manusphere"
+    GEMINI_API_KEY: Optional[str] = None
+    PORT: Optional[int] = None
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
 settings = Settings()

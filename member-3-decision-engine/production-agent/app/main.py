@@ -1,21 +1,23 @@
-"""
-Production Planning Agent - Application Entry Point
-
-Bootstraps the FastAPI application, registers middleware, mounts
-the versioned API router, and exposes the top-level health endpoints
-required by the spec (GET / and GET /health).
-"""
-
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
+from app.api.v1.endpoints import production
 from app.core.config import settings
+from app.core.database import Base, engine
 from app.core.logging import logger
 
-# ---------------------------------------------------------------------------
-# Application factory
-# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Automatically initialize db schema on startup
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception:
+        pass
+    yield
+    await engine.dispose()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -26,10 +28,7 @@ app = FastAPI(
         "and returns an optimised production plan with machine scheduling, "
         "capacity utilisation, and priority classification."
     ),
-    contact={
-        "name": "ManuSphere AI — Member 3",
-    },
-    license_info={"name": "MIT"},
+    lifespan=lifespan
 )
 
 # ---------------------------------------------------------------------------
@@ -49,6 +48,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(production.router, prefix="/production-plans", tags=["production-plans"])
 
 # ---------------------------------------------------------------------------
 # Top-level routes required by the spec
