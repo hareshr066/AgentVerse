@@ -1,19 +1,43 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from app.api.health import router as health_router
-from app.api.supply import router as supply_router
+from app.routers import router as supplier_crud_router
+from app.config import settings
+from app.database import Base, engine
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("supply_agent")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing database tables...")
+    try:
+        from app.models import Supplier
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables initialized successfully.")
+    except Exception as e:
+        logger.error("Failed to initialize database tables: %s", str(e), exc_info=True)
+    yield
+    engine.dispose()
 
 app = FastAPI(
-    title="Supply Chain Agent",
-    version="1.0.0",
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    lifespan=lifespan,
 )
 
-# Register routers
-app.include_router(health_router)
-app.include_router(supply_router)
+app.include_router(supplier_crud_router)
 
 @app.get("/")
 def read_root():
     return {
-        "service": "Supply Chain Agent",
+        "service": settings.APP_NAME,
         "status": "running"
+    }
+
+@app.get("/health")
+def get_health():
+    return {
+        "service": settings.APP_NAME,
+        "status": "healthy"
     }
