@@ -90,11 +90,12 @@ export default function Overview() {
         {agents.map((a) => {
           const Icon = a.icon;
           return (
-            <Link to={`/agents/${a.id}`} key={a.id} className="agent-card"
+            <Link to={`/agents/${a.id}`} key={a.id} className={`agent-card card-anim-${a.anim}`}
               style={{ '--accent': a.accent }}>
+              <div className="agent-card-glow" />
               <div className="agent-card-top">
                 <div className="agent-icon" style={{ background: `${a.accent}1a`, color: a.accent }}>
-                  <Icon size={22} />
+                  <Icon size={22} className={`agent-anim anim-${a.anim}`} />
                 </div>
                 <span className="status-badge status-online">Online</span>
               </div>
@@ -125,7 +126,7 @@ export default function Overview() {
               <React.Fragment key={p.step}>
                 <Link to={`/agents/${a.id}`} className="pipeline-step" style={{ '--accent': a.accent }}>
                   <div className="pipeline-icon" style={{ background: `${a.accent}1a`, color: a.accent }}>
-                    <Icon size={18} />
+                    <Icon size={18} className={`agent-anim anim-${a.anim}`} />
                   </div>
                   <span className="pipeline-label">{p.label}</span>
                   <span className="pipeline-text">{p.text}</span>

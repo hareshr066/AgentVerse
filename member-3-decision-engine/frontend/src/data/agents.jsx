@@ -13,6 +13,7 @@ export const agents = [
     owner: 'Member 1 · AI Intelligence',
     icon: Radio,
     accent: '#3b82f6',
+    anim: 'radar',
     port: 8101,
     endpoint: '/api/v1/events',
     description:
@@ -53,6 +54,7 @@ export const agents = [
     owner: 'Member 1 · AI Intelligence',
     icon: TrendingUp,
     accent: '#14b8a6',
+    anim: 'bob',
     port: 8102,
     endpoint: '/api/v1/forecast',
     description:
@@ -93,6 +95,7 @@ export const agents = [
     owner: 'Member 2 · Operations',
     icon: Boxes,
     accent: '#f59e0b',
+    anim: 'stack',
     port: 8201,
     endpoint: '/api/v1/inventory',
     description:
@@ -133,6 +136,7 @@ export const agents = [
     owner: 'Member 2 · Operations',
     icon: Truck,
     accent: '#f43f5e',
+    anim: 'drive',
     port: 8202,
     endpoint: '/api/v1/procurement',
     description:
@@ -173,6 +177,7 @@ export const agents = [
     owner: 'Member 3 · Decision Engine',
     icon: Factory,
     accent: '#8b5cf6',
+    anim: 'spin',
     port: 8301,
     endpoint: '/api/v1/production',
     description:
@@ -211,6 +216,7 @@ export const agents = [
     owner: 'Member 3 · Decision Engine',
     icon: Sparkles,
     accent: '#10b981',
+    anim: 'sparkle',
     port: 8302,
     endpoint: '/api/v1/recommendation',
     description:

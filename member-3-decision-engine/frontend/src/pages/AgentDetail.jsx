@@ -58,7 +58,7 @@ export default function AgentDetail() {
 
       <section className="agent-hero" style={{ '--accent': agent.accent }}>
         <div className="agent-hero-icon" style={{ background: `${agent.accent}1a`, color: agent.accent }}>
-          <Icon size={30} />
+          <Icon size={34} className={`agent-anim-lg anim-${agent.anim}`} />
         </div>
         <div className="agent-hero-copy">
           <div className="agent-hero-top">
