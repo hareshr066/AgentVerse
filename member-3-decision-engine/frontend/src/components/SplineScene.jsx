@@ -2,15 +2,19 @@ import React, { Suspense, lazy } from 'react';
 
 const Spline = lazy(() => import('@splinetool/react-spline'));
 
-export default function SplineScene({ className }) {
+export function SplineScene({ scene, className }) {
   return (
-    <div className={`spline-wrapper ${className || ''}`}>
-      <Suspense fallback={<div className="spline-loading">Loading 3D Interface...</div>}>
-        <Spline 
-          scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode" 
-          className="spline-canvas"
-        />
-      </Suspense>
-    </div>
+    <Suspense
+      fallback={
+        <div className="w-full h-full flex items-center justify-center">
+          <div className="loader">Loading 3D Scene...</div>
+        </div>
+      }
+    >
+      <Spline
+        scene={scene}
+        className={className}
+      />
+    </Suspense>
   );
 }
