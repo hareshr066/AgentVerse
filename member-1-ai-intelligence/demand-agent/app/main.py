@@ -48,3 +48,8 @@ app.include_router(forecast.router, prefix="/forecast", tags=["forecast"])
 @app.get("/")
 async def root():
     return {"message": f"Welcome to {settings.PROJECT_NAME}"}
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "service": settings.PROJECT_NAME}
+
