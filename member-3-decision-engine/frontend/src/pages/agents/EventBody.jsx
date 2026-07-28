@@ -76,10 +76,18 @@ export default function EventBody({ agent }) {
 
         <div className="card span-4">
           <div className="card-title"><Server size={18} color={agent.accent} /> Connected Sources</div>
-          <div className="chip-wrap">
-            {eventDetail.sources.map((s) => (
-              <span className="chip" key={s}><span className="pulse-dot" /> {s}</span>
-            ))}
+          <div className="src-list">
+            {eventDetail.sources.map((s, i) => {
+              const load = [72, 88, 64, 91, 40, 55][i] ?? 60;
+              return (
+                <div className="src-row" key={s}>
+                  <span className="pulse-dot" style={{ background: agent.accent }} />
+                  <span className="src-name">{s}</span>
+                  <div className="src-bar"><span style={{ width: `${load}%`, background: agent.accent }} /></div>
+                  <small>{load}%</small>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

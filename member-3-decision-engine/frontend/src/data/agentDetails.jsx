@@ -10,6 +10,13 @@ export const eventDetail = {
     { t: '20:39:44', level: 'info', msg: 'Batch flushed to demand pipeline (1.2 MB)' },
     { t: '20:39:12', level: 'warn', msg: 'Back-pressure: buffer at 74% on ingest-3' },
     { t: '20:38:50', level: 'info', msg: 'Heartbeat OK — 6 producers connected' },
+    { t: '20:38:29', level: 'info', msg: 'Enriched 1,880 events with asset metadata' },
+    { t: '20:38:04', level: 'info', msg: 'Schema registry sync complete (v3.1)' },
+    { t: '20:37:41', level: 'warn', msg: 'Thermal drift on kiln sensor T-22 (+3.4°C)' },
+    { t: '20:37:19', level: 'info', msg: 'Windowed aggregation flushed for Line 4' },
+    { t: '20:36:58', level: 'error', msg: 'Node CX-9 timeout — retry scheduled' },
+    { t: '20:36:33', level: 'info', msg: 'Deduplicated 412 duplicate frames' },
+    { t: '20:36:10', level: 'info', msg: 'Ingest-2 offset committed at 9,441,203' },
   ],
   anomalies: [
     { name: 'Vibration', count: 8, tone: '#f43f5e' },
