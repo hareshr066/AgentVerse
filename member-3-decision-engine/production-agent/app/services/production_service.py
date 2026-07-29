@@ -1,114 +1,108 @@
 """
 Production Planning Agent - ProductionPlannerService
 
-Central service that orchestrates all business logic for generating a
-production plan.  It delegates to CapacityAnalyzer (utilization) and
-JobScheduler (machine distribution) so each concern stays isolated.
+Central service that orchestrates all business logic for generating an
+optimized production plan from demand, inventory, supply chain, and capacity parameters.
 
-Business rules (from spec):
-    production_quantity = forecast_demand - current_inventory + safety_stock
-    production_days     = production_quantity / daily_capacity
-    capacity_utilization = (production_quantity / (daily_capacity × production_days)) × 100
-
-Priority rules:
-    delay_days > 5          → CRITICAL
-    forecast_demand > current_inventory → HIGH
-    otherwise               → NORMAL
+Business Rules:
+    1. Production Quantity = forecast_demand - current_inventory + safety_stock
+    2. Production Days = math.ceil(production_quantity / daily_capacity)
+    3. Capacity Utilization = (production_quantity / (daily_capacity * production_days)) * 100
+    4. Priority Rules:
+          - Supplier Delay > 5 days -> CRITICAL
+          - Forecast Demand > Current Inventory -> HIGH
+          - Otherwise -> NORMAL
+    5. Machine Allocation:
+          - Distribute production to machines based on specified or default capacities.
 """
 
 import math
+from typing import List
 from app.schemas.production_request import ProductionPlanRequest
-from app.schemas.production_response import ProductionPlanResponse
-from app.capacity.capacity_analyzer import CapacityAnalyzer
-from app.scheduler.job_scheduler import JobScheduler
+from app.schemas.production_response import ProductionPlanResponse, MachineSlot
 from app.core.logging import logger
-from app.core.exceptions import ProductionValidationError, ProductionCalculationError
 
 
 class ProductionPlannerService:
     """
-    Orchestrates the full production planning pipeline.
-
-    Instantiate once per request (or as a singleton — it holds no
-    mutable state between calls).
+    Orchestrates the full production planning calculation.
     """
-
-    def __init__(self) -> None:
-        self._capacity_analyzer = CapacityAnalyzer()
-        self._scheduler = JobScheduler()
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def generate_plan(self, request: ProductionPlanRequest) -> ProductionPlanResponse:
         """
-        Generate a complete production plan from the validated request.
-
-        Workflow:
-            1. Compute production_quantity
-            2. Validate quantity is positive
-            3. Compute production_days
-            4. Compute capacity_utilization via CapacityAnalyzer
-            5. Determine priority
-            6. Build machine schedule via JobScheduler
-            7. Return assembled ProductionPlanResponse
+        Generate an optimized production plan.
 
         Args:
-            request: Validated ProductionPlanRequest from the API layer.
+            request: Validated ProductionPlanRequest.
 
         Returns:
-            ProductionPlanResponse with all computed fields populated.
-
-        Raises:
-            ProductionValidationError: When computed quantity is zero or negative.
-            ProductionCalculationError: When a numeric computation fails.
+            ProductionPlanResponse populated with computed metrics.
         """
         logger.info(
-            "Generating production plan for product='%s' | "
-            "forecast=%d | inventory=%d | safety_stock=%d | "
-            "daily_capacity=%d | supplier_delay=%s | delay_days=%d",
+            "Generating production plan for product='%s' | demand=%d | inventory=%d | safety_stock=%d | daily_cap=%d",
             request.product,
             request.forecast_demand,
             request.current_inventory,
             request.safety_stock,
             request.daily_capacity,
-            request.supplier_delay,
-            request.delay_days,
         )
 
-        # ── Step 1: Production Quantity ────────────────────────────────
-        production_quantity = self._compute_production_quantity(request)
-
-        # ── Step 2: Production Days ────────────────────────────────────
-        production_days = self._compute_production_days(
-            production_quantity, request.daily_capacity
+        # 1. Compute Production Quantity
+        raw_quantity = (
+            request.forecast_demand - request.current_inventory + request.safety_stock
         )
+        production_quantity = max(0, raw_quantity)
 
-        # ── Step 3: Capacity Utilization ───────────────────────────────
-        utilization_raw = self._capacity_analyzer.compute_utilization(
-            production_quantity=production_quantity,
-            daily_capacity=request.daily_capacity,
-            production_days=production_days,
-        )
-        capacity_utilization_str = self._capacity_analyzer.format_utilization(
-            utilization_raw
-        )
+        # 2. Compute Production Days
+        daily_cap = max(1, request.daily_capacity)
+        if production_quantity > 0:
+            production_days = math.ceil(production_quantity / daily_cap)
+        else:
+            production_days = 0
 
-        # ── Step 4: Priority ───────────────────────────────────────────
+        # 3. Compute Capacity Utilization
+        if production_days > 0 and (daily_cap * production_days) > 0:
+            utilization_val = (production_quantity / (daily_cap * production_days)) * 100.0
+            utilization_rounded = round(utilization_val)
+            # Format as percentage string, e.g. "97%" or "98%"
+            capacity_utilization_str = f"{utilization_rounded}%"
+        else:
+            utilization_val = 0.0
+            capacity_utilization_str = "0%"
+
+        # 4. Determine Priority Rules
         priority = self._determine_priority(request)
 
-        # ── Step 5: Machine Schedule ───────────────────────────────────
-        num_machines: int = request.num_machines or 3
-        machine_schedule = self._scheduler.schedule(
+        # 5. Generate Machine Allocation Schedule
+        machine_schedule = self._generate_machine_schedule(
+            request=request,
             production_quantity=production_quantity,
-            daily_capacity=request.daily_capacity,
+            daily_capacity=daily_cap,
             production_days=production_days,
-            num_machines=num_machines,
+        )
+
+        # 6. Detect Production Bottlenecks
+        bottlenecks = self._detect_bottlenecks(
+            request=request,
+            utilization_val=utilization_val,
+            production_quantity=production_quantity,
+        )
+
+        # 7. Generate Machine Usage Optimization Summary
+        num_m = len(machine_schedule)
+        optimized_usage = (
+            f"Production distributed across {num_m} machines with "
+            f"{capacity_utilization_str} capacity utilization over {production_days} days."
+        )
+
+        message = (
+            "Production plan generated successfully."
+            if production_quantity > 0
+            else "Current inventory covers demand and safety stock. No production required."
         )
 
         logger.info(
-            "Plan complete — qty=%d | days=%.2f | utilization=%s | priority=%s",
+            "Production plan complete — qty=%d | days=%d | util=%s | priority=%s",
             production_quantity,
             production_days,
             capacity_utilization_str,
@@ -118,92 +112,106 @@ class ProductionPlannerService:
         return ProductionPlanResponse(
             product=request.product,
             production_quantity=production_quantity,
-            production_days=round(production_days, 2),
+            production_days=production_days,
             capacity_utilization=capacity_utilization_str,
             priority=priority,
             machine_schedule=machine_schedule,
-            message="Production plan generated successfully.",
+            bottlenecks=bottlenecks,
+            optimized_usage=optimized_usage,
+            message=message,
         )
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    def _compute_production_quantity(self, request: ProductionPlanRequest) -> int:
-        """
-        production_quantity = forecast_demand - current_inventory + safety_stock
-
-        If the result is zero or negative it means existing inventory
-        already covers demand plus the required buffer — we raise a
-        validation error so the caller can handle it appropriately
-        (the API returns HTTP 422 with a clear message).
-        """
-        quantity = (
-            request.forecast_demand
-            - request.current_inventory
-            + request.safety_stock
-        )
-
-        logger.info(
-            "Production quantity: %d - %d + %d = %d",
-            request.forecast_demand,
-            request.current_inventory,
-            request.safety_stock,
-            quantity,
-        )
-
-        if quantity <= 0:
-            raise ProductionValidationError(
-                f"Computed production_quantity ({quantity}) is not positive. "
-                "Current inventory already covers forecast demand plus safety stock. "
-                "No production run is required."
-            )
-
-        return quantity
-
-    def _compute_production_days(
-        self, production_quantity: int, daily_capacity: int
-    ) -> float:
-        """
-        production_days = production_quantity / daily_capacity
-
-        Uses math.ceil-equivalent float division so fractional days are
-        preserved in the response (the API rounds to 2 decimal places).
-        """
-        if daily_capacity <= 0:
-            raise ProductionCalculationError(
-                "daily_capacity must be greater than zero."
-            )
-
-        days = production_quantity / daily_capacity
-        logger.info(
-            "Production days: %d / %d = %.4f",
-            production_quantity,
-            daily_capacity,
-            days,
-        )
-        return days
 
     def _determine_priority(self, request: ProductionPlanRequest) -> str:
         """
-        Apply priority rules in order of descending severity:
-
-            delay_days > 5                      → CRITICAL
-            forecast_demand > current_inventory → HIGH
-            otherwise                           → NORMAL
+        Priority Rules:
+            - Supplier Delay > 5 days -> CRITICAL
+            - Forecast Demand > Current Inventory -> HIGH
+            - Otherwise -> NORMAL
         """
         if request.supplier_delay and request.delay_days > 5:
-            priority = "CRITICAL"
-        elif request.forecast_demand > request.current_inventory:
-            priority = "HIGH"
-        else:
-            priority = "NORMAL"
+            return "CRITICAL"
+        if request.forecast_demand > request.current_inventory:
+            return "HIGH"
+        return "NORMAL"
 
-        logger.info(
-            "Priority determined: %s (delay_days=%d, forecast=%d, inventory=%d)",
-            priority,
-            request.delay_days,
-            request.forecast_demand,
-            request.current_inventory,
-        )
-        return priority
+    def _generate_machine_schedule(
+        self,
+        request: ProductionPlanRequest,
+        production_quantity: int,
+        daily_capacity: int,
+        production_days: int,
+    ) -> List[MachineSlot]:
+        """
+        Distribute daily or total production across machines.
+        """
+        slots: List[MachineSlot] = []
+
+        if request.machines and len(request.machines) > 0:
+            # Use explicitly provided machines list
+            total_machine_cap = sum(m.capacity for m in request.machines)
+            if total_machine_cap == 0:
+                total_machine_cap = daily_capacity
+
+            for m in request.machines:
+                ratio = m.capacity / total_machine_cap
+                allocated = int(round(ratio * daily_capacity))
+                slots.append(
+                    MachineSlot(
+                        machine=m.name,
+                        allocated=allocated,
+                        machine_id=m.name,
+                        assigned_units=allocated,
+                        capacity=m.capacity,
+                        shift_hours=8.0,
+                        utilization_percent=round(ratio * 100.0, 1),
+                    )
+                )
+        else:
+            # Generate default machine schedule based on num_machines or default 2 machines
+            num_m = request.num_machines if (request.num_machines and request.num_machines > 0) else 2
+            per_machine = daily_capacity // num_m
+            remainder = daily_capacity % num_m
+
+            names = ["Machine A", "Machine B", "Machine C", "Machine D", "Machine E"]
+            for i in range(num_m):
+                m_name = names[i] if i < len(names) else f"Machine {i+1}"
+                allocated = per_machine + (remainder if i == 0 else 0)
+                slots.append(
+                    MachineSlot(
+                        machine=m_name,
+                        allocated=allocated,
+                        machine_id=f"M-{i+1}",
+                        assigned_units=allocated,
+                        capacity=allocated,
+                        shift_hours=8.0,
+                        utilization_percent=100.0,
+                    )
+                )
+
+        return slots
+
+    def _detect_bottlenecks(
+        self,
+        request: ProductionPlanRequest,
+        utilization_val: float,
+        production_quantity: int,
+    ) -> List[str]:
+        """
+        Detect any operational or supply bottlenecks.
+        """
+        bottlenecks: List[str] = []
+
+        if request.supplier_delay:
+            bottlenecks.append(f"Supplier delay active ({request.delay_days} days)")
+
+        if request.forecast_demand > (request.current_inventory + request.safety_stock):
+            gap = request.forecast_demand - request.current_inventory
+            bottlenecks.append(f"High demand-inventory deficit ({gap:,} units)")
+
+        if utilization_val >= 95.0:
+            bottlenecks.append(f"High facility capacity utilization ({utilization_val:.0f}%)")
+
+        if not bottlenecks:
+            bottlenecks.append("No active production bottlenecks detected.")
+
+        return bottlenecks
