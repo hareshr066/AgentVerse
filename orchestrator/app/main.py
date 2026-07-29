@@ -10,7 +10,7 @@ if _parent_root not in sys.path:
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
-from app.routers import router as workflow_router
+from app.routers import router as workflow_router, pipeline_router
 from app.config import settings
 from app.dependencies import get_http_client
 import app.services as services
@@ -37,6 +37,7 @@ app.add_middleware(
 )
 
 app.include_router(workflow_router)
+app.include_router(pipeline_router)
 
 @app.get("/")
 def read_root():
