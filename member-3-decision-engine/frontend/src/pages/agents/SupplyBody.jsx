@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Award, Truck, Clock, ShieldCheck, RefreshCw, Plus, CheckCircle2, Search, Info, MapPin, DollarSign, AlertTriangle } from 'lucide-react';
+import { Award, Truck, Clock, ShieldCheck, RefreshCw, Plus, CheckCircle2, Search, Info, MapPin, Package } from 'lucide-react';
 
 function riskColor(level) {
   const l = (level || '').toLowerCase();
@@ -17,11 +17,35 @@ function riskBg(level) {
   return '#1f2937';
 }
 
+// Supplier City Map for clear location tags
+const cityMap = {
+  'Tata Steel Ltd': 'Jamshedpur, JH',
+  'Reliance Industries Ltd': 'Hazira, GJ',
+  'Hindalco Industries Ltd': 'Renukoot, UP',
+  'Bharat Forge Ltd': 'Pune, MH',
+  'Larsen & Toubro Ltd': 'Mumbai, MH',
+  'Sundram Fasteners Ltd': 'Chennai, TN',
+  'Polycab India Ltd': 'Vadodara, GJ',
+  'Bosch India Ltd': 'Bengaluru, KA',
+  'Hindustan Zinc Ltd': 'Udaipur, RJ',
+  'Exide Industries Ltd': 'Kolkata, WB',
+  'Crompton Greaves Ltd': 'Bhopal, MP',
+  'Minda Corp Ltd': 'Noida, UP',
+  'Kirloskar Brothers Ltd': 'Pune, MH',
+  'Godrej Material Handling': 'Mumbai, MH',
+  'Subros Ltd': 'Gurugram, HR',
+  'SRF Ltd': 'Manali, TN',
+  'Supreme Industries Ltd': 'Jalgaon, MH',
+  'Thermax Ltd': 'Pune, MH',
+  'Tube Investments Ltd': 'Avadi, TN',
+  'Carborundum Universal Ltd': 'Hosur, TN'
+};
+
 function buildTimeline(suppliers) {
   const statusMap = ['In Transit', 'Confirmed', 'Delayed', 'Delivered'];
   const toneMap   = ['#3b82f6',   '#14b8a6',   '#f43f5e', '#10b981'];
-  return suppliers.slice(0, 6).map((s, i) => ({
-    id: `PO-IND-${6100 + (s.id ?? i)}`,
+  return suppliers.slice(0, 5).map((s, i) => ({
+    id: `PO-IND-${8100 + (s.id ?? i)}`,
     item: `${s.material_name || s.supplier_name}`,
     qty: (i + 1) * 500,
     status: statusMap[i % 4],
@@ -96,7 +120,7 @@ export default function SupplyBody({ agent }) {
       });
 
       if (res.ok) {
-        setMsg(`Added Indian Supplier '${supName}' & calculated Risk Score!`);
+        setMsg(`Added Supplier '${supName}' to Neon DB & computed risk!`);
         setSupName('');
         setMatName('');
         setAvailQty('');
@@ -133,15 +157,14 @@ export default function SupplyBody({ agent }) {
 
   const timeline = buildTimeline(ranked);
   const recCount = suppliers.filter((s) => s.recommended).length;
-  const highRiskCount = suppliers.filter((s) => (s.risk_level || '').toLowerCase().includes('high')).length;
 
   return (
-    <div style={{ fontSize: 14 }}>
-      {/* Top Action Header */}
+    <div style={{ fontSize: 14, color: '#f3f4f6' }}>
+      {/* Top Header Controls */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 13 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 14 }}>
           <span style={{ color: error ? '#f59e0b' : '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {error ? '⚠ ' + error : `🇮🇳 Neon Cloud Synced · ${suppliers.length} Live Indian Industrial Vendors (${lastUpdated || 'Active'})`}
+            {error ? '⚠ ' + error : `🇮🇳 Neon DB Connected · ${suppliers.length} Live Indian Suppliers (${lastUpdated || 'Active'})`}
           </span>
           <button onClick={fetchSuppliers} style={{ background: 'none', border: 'none', cursor: 'pointer', color: agent.accent, fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
             <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
@@ -153,7 +176,7 @@ export default function SupplyBody({ agent }) {
             onClick={() => setShowFormulaInfo(!showFormulaInfo)}
             style={{ padding: '8px 14px', fontSize: 13, background: '#1f2937', color: '#e5e7eb', border: '1px solid #374151', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}
           >
-            <Info size={15} color="#3b82f6" /> {showFormulaInfo ? 'Hide Formula' : 'View Risk Logic'}
+            <Info size={15} color="#3b82f6" /> {showFormulaInfo ? 'Hide Logic' : 'View Risk Formula'}
           </button>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
@@ -178,21 +201,21 @@ export default function SupplyBody({ agent }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginTop: 12, fontSize: 13, color: '#94a3b8' }}>
             <div style={{ background: '#1e293b', padding: 12, borderRadius: 8 }}>
-              <strong style={{ color: '#f8fafc', display: 'block', marginBottom: 6, fontSize: 14 }}>Risk Score Equation (0 - 100)</strong>
+              <strong style={{ color: '#f8fafc', display: 'block', marginBottom: 6, fontSize: 14 }}>1. Risk Score Equation (0 - 100)</strong>
               <code style={{ background: '#0f172a', padding: '4px 8px', borderRadius: 4, color: '#38bdf8', display: 'inline-block', marginBottom: 6, fontSize: 13 }}>
                 Risk = (100 - Quality)×0.3 + (100 - OnTime)×0.2 + DelayDays×10 + LeadTime×2
               </code>
               <p style={{ margin: 0, fontSize: 12 }}>Evaluates overall vendor reliability based on defects, late deliveries, and transit times.</p>
             </div>
             <div style={{ background: '#1e293b', padding: 12, borderRadius: 8 }}>
-              <strong style={{ color: '#f8fafc', display: 'block', marginBottom: 6, fontSize: 14 }}>Risk Levels</strong>
+              <strong style={{ color: '#f8fafc', display: 'block', marginBottom: 6, fontSize: 14 }}>2. Risk Threshold Categories</strong>
               <div style={{ fontSize: 12, marginTop: 4 }}>
                 <span style={{ color: '#10b981', fontWeight: 600 }}>● Low Risk: &lt; 25.0</span> | <span style={{ color: '#f59e0b', fontWeight: 600 }}>● Medium: 25 - 50</span> | <span style={{ color: '#f43f5e', fontWeight: 600 }}>● High: &gt; 50</span>
               </div>
             </div>
             <div style={{ background: '#1e293b', padding: 12, borderRadius: 8 }}>
-              <strong style={{ color: '#f8fafc', display: 'block', marginBottom: 6, fontSize: 14 }}>Recommendation Criteria</strong>
-              <p style={{ margin: 0, fontSize: 12 }}>Vendors receive <span style={{ color: '#10b981', fontWeight: 'bold' }}>✓ Recommended</span> status when Risk is Low, Quality &gt; 90%, and On-Time &gt; 95%.</p>
+              <strong style={{ color: '#f8fafc', display: 'block', marginBottom: 6, fontSize: 14 }}>3. Recommendation Rule</strong>
+              <p style={{ margin: 0, fontSize: 12 }}>A vendor is awarded <span style={{ color: '#10b981', fontWeight: 'bold' }}>✓ Recommended</span> status if Risk is Low, Quality &gt; 90%, and On-Time &gt; 95%.</p>
             </div>
           </div>
         </div>
@@ -202,8 +225,8 @@ export default function SupplyBody({ agent }) {
       {showAddForm && (
         <form onSubmit={handleAddSupplier} style={{ background: '#111827', padding: 18, borderRadius: 8, marginBottom: 18, border: `1px solid ${agent.accent}66`, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
           <div>
-            <label style={{ fontSize: 12, color: '#9ca3af', display: 'block', marginBottom: 4, fontWeight: 500 }}>Supplier Name & City</label>
-            <input type="text" placeholder="e.g. Jindal Steel (Hisar, HR)" value={supName} onChange={(e) => setSupName(e.target.value)} style={{ width: '100%', padding: '8px 10px', background: '#1f2937', border: '1px solid #4b5563', borderRadius: 6, color: '#fff', fontSize: 13, height: 38 }} required />
+            <label style={{ fontSize: 12, color: '#9ca3af', display: 'block', marginBottom: 4, fontWeight: 500 }}>Supplier Name</label>
+            <input type="text" placeholder="e.g. Jindal Steel Ltd" value={supName} onChange={(e) => setSupName(e.target.value)} style={{ width: '100%', padding: '8px 10px', background: '#1f2937', border: '1px solid #4b5563', borderRadius: 6, color: '#fff', fontSize: 13, height: 38 }} required />
           </div>
           <div>
             <label style={{ fontSize: 12, color: '#9ca3af', display: 'block', marginBottom: 4, fontWeight: 500 }}>Material Supplied</label>
@@ -237,30 +260,30 @@ export default function SupplyBody({ agent }) {
         </form>
       )}
 
-      {/* Main Grid Section */}
+      {/* Main Grid Layout */}
       <div className="grid" style={{ gap: 16 }}>
         {/* Left Column: Clean Ranked Supplier Cards */}
         <div className="card span-7" style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
             <div className="card-title" style={{ margin: 0, fontSize: 17, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Award size={20} color={agent.accent} /> Indian Supplier Roster ({filtered.length})
+              <Award size={20} color={agent.accent} /> Indian Supplier Network ({filtered.length})
             </div>
 
-            {/* Filter Controls */}
+            {/* Filter controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <div style={{ position: 'relative' }}>
                 <Search size={15} style={{ position: 'absolute', left: 10, top: 10, color: '#6b7280' }} />
                 <input
                   type="text"
-                  placeholder="Search supplier or city..."
+                  placeholder="Search supplier..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  style={{ padding: '7px 12px 7px 32px', background: '#111827', border: '1px solid #374151', borderRadius: 6, color: '#fff', fontSize: 13, width: 190, height: 36 }}
+                  style={{ padding: '7px 12px 7px 32px', background: '#111827', border: '1px solid #374151', borderRadius: 6, color: '#fff', fontSize: 13, width: 180, height: 36 }}
                 />
               </div>
 
               <div style={{ display: 'flex', background: '#111827', padding: 3, borderRadius: 6, border: '1px solid #374151' }}>
-                {['ALL', 'RECOMMENDED', 'LOW', 'MEDIUM', 'HIGH'].map((tab) => (
+                {['ALL', 'RECOMMENDED', 'LOW', 'MEDIUM'].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setFilterTab(tab)}
@@ -283,14 +306,10 @@ export default function SupplyBody({ agent }) {
           </div>
 
           {/* Supplier Cards List */}
-          <div style={{ maxHeight: 600, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ maxHeight: 600, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 14 }}>
             {filtered.map((s) => {
-              // Parse out location if present in parentheses e.g. "Tata Steel (Jamshedpur)"
-              const rawName = s.supplier_name || '';
-              const matchLoc = rawName.match(/\(([^)]+)\)/);
-              const locName = matchLoc ? matchLoc[1] : 'India';
-              const cleanSupName = rawName.replace(/\([^)]+\)/, '').trim();
-
+              const supNameClean = s.supplier_name || 'Supplier';
+              const city = cityMap[supNameClean] || 'India';
               const color = riskColor(s.risk_level);
               const bg = riskBg(s.risk_level);
 
@@ -305,10 +324,10 @@ export default function SupplyBody({ agent }) {
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 12,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
                   }}
                 >
-                  {/* Row 1: Rank, Name, Location Badge, Risk Score Pill */}
+                  {/* Row 1: Rank, Name, City Badge, Risk Score */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div
@@ -317,8 +336,8 @@ export default function SupplyBody({ agent }) {
                           color: agent.accent,
                           fontWeight: 'bold',
                           fontSize: 14,
-                          width: 32,
-                          height: 32,
+                          width: 34,
+                          height: 34,
                           borderRadius: 6,
                           display: 'flex',
                           alignItems: 'center',
@@ -330,23 +349,24 @@ export default function SupplyBody({ agent }) {
                       </div>
 
                       <div>
-                        <span style={{ fontSize: 16, fontWeight: 'bold', color: '#f9fafb' }}>
-                          {cleanSupName}
+                        <span style={{ fontSize: 16, fontWeight: 'bold', color: '#ffffff' }}>
+                          {supNameClean}
                         </span>
                         <span
                           style={{
-                            marginLeft: 8,
-                            fontSize: 11,
-                            background: '#37415188',
-                            color: '#9ca3af',
-                            padding: '2px 8px',
+                            marginLeft: 10,
+                            fontSize: 12,
+                            background: '#1e293b',
+                            color: '#94a3b8',
+                            padding: '3px 10px',
                             borderRadius: 12,
+                            border: '1px solid #334155',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 4
                           }}
                         >
-                          <MapPin size={11} color="#60a5fa" /> {locName}
+                          <MapPin size={12} color="#60a5fa" /> {city}
                         </span>
                       </div>
                     </div>
@@ -356,7 +376,7 @@ export default function SupplyBody({ agent }) {
                         background: bg,
                         color: color,
                         border: `1px solid ${color}44`,
-                        padding: '4px 12px',
+                        padding: '4px 14px',
                         borderRadius: 20,
                         fontSize: 13,
                         fontWeight: 'bold',
@@ -370,56 +390,50 @@ export default function SupplyBody({ agent }) {
                     </div>
                   </div>
 
-                  {/* Row 2: Supplied Material & Recommendation Badge */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1e293b66', padding: '8px 12px', borderRadius: 6 }}>
-                    <div style={{ fontSize: 13, color: '#cbd5e1' }}>
+                  {/* Row 2: Material Name & Recommendation Status */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '10px 14px', borderRadius: 8, border: '1px solid #1e293b' }}>
+                    <div style={{ fontSize: 14, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Package size={15} color="#38bdf8" />
                       Material: <strong style={{ color: '#38bdf8', fontWeight: 600 }}>{s.material_name}</strong>
                     </div>
 
                     {s.recommended ? (
-                      <span style={{ fontSize: 11, color: '#10b981', background: '#10b98122', border: '1px solid #10b98144', padding: '3px 10px', borderRadius: 12, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <CheckCircle2 size={13} /> Recommended Vendor
+                      <span style={{ fontSize: 12, color: '#10b981', background: '#10b98122', border: '1px solid #10b98144', padding: '4px 12px', borderRadius: 12, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <CheckCircle2 size={14} /> Recommended Vendor
                       </span>
                     ) : (
-                      <span style={{ fontSize: 11, color: '#f59e0b', background: '#f59e0b15', border: '1px solid #f59e0b33', padding: '3px 10px', borderRadius: 12, fontWeight: 500 }}>
+                      <span style={{ fontSize: 12, color: '#f59e0b', background: '#f59e0b15', border: '1px solid #f59e0b33', padding: '4px 12px', borderRadius: 12, fontWeight: 500 }}>
                         Standard Vendor
                       </span>
                     )}
                   </div>
 
-                  {/* Row 3: Risk Score Progress Bar */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ height: 6, background: '#1f2937', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${Math.max(5, 100 - (s.risk_score || 0))}%`, background: color, borderRadius: 3 }} />
-                    </div>
-                  </div>
-
-                  {/* Row 4: 4 Metric Cards (Lead Time, On-Time %, Quality, Unit Price) */}
+                  {/* Row 3: Metrics Grid (4 Cards) */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 2 }}>
-                    <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: 6, textAlign: 'center' }}>
+                    <div style={{ background: '#0f172a', padding: '10px', borderRadius: 8, textAlign: 'center', border: '1px solid #1e293b' }}>
                       <span style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 2 }}>Lead Time</span>
-                      <strong style={{ fontSize: 13, color: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <Clock size={13} color="#60a5fa" /> {s.lead_time_days} days
+                      <strong style={{ fontSize: 14, color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                        <Clock size={14} color="#60a5fa" /> {s.lead_time_days} days
                       </strong>
                     </div>
 
-                    <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: 6, textAlign: 'center' }}>
+                    <div style={{ background: '#0f172a', padding: '10px', borderRadius: 8, textAlign: 'center', border: '1px solid #1e293b' }}>
                       <span style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 2 }}>On-Time Delivery</span>
-                      <strong style={{ fontSize: 13, color: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <ShieldCheck size={13} color="#34d399" /> {s.on_time_delivery_percentage?.toFixed(0)}%
+                      <strong style={{ fontSize: 14, color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                        <ShieldCheck size={14} color="#34d399" /> {s.on_time_delivery_percentage?.toFixed(0)}%
                       </strong>
                     </div>
 
-                    <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: 6, textAlign: 'center' }}>
+                    <div style={{ background: '#0f172a', padding: '10px', borderRadius: 8, textAlign: 'center', border: '1px solid #1e293b' }}>
                       <span style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 2 }}>Quality Rating</span>
-                      <strong style={{ fontSize: 13, color: '#f3f4f6' }}>
+                      <strong style={{ fontSize: 14, color: '#f8fafc' }}>
                         {s.quality_score}%
                       </strong>
                     </div>
 
-                    <div style={{ background: '#0f172a', padding: '8px 10px', borderRadius: 6, textAlign: 'center' }}>
+                    <div style={{ background: '#0f172a', padding: '10px', borderRadius: 8, textAlign: 'center', border: '1px solid #1e293b' }}>
                       <span style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 2 }}>Unit Price</span>
-                      <strong style={{ fontSize: 13, color: '#10b981' }}>
+                      <strong style={{ fontSize: 14, color: '#10b981' }}>
                         ${s.price_per_unit}
                       </strong>
                     </div>
@@ -430,7 +444,7 @@ export default function SupplyBody({ agent }) {
           </div>
         </div>
 
-        {/* Right Column: PO Timeline & Executive Summary Stats */}
+        {/* Right Column: PO Dispatch & Executive Summary */}
         <div className="card span-5" style={{ padding: 20, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div className="card-title" style={{ fontSize: 17, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -443,7 +457,7 @@ export default function SupplyBody({ agent }) {
                   <span className="po-node" />
                   <div className="po-card" style={{ padding: 12, background: '#111827', border: '1px solid #1f2937', borderRadius: 8 }}>
                     <div className="po-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <b style={{ fontSize: 13, color: '#f3f4f6' }}>{o.id}</b>
+                      <b style={{ fontSize: 13, color: '#f8fafc' }}>{o.id}</b>
                       <span
                         style={{
                           fontSize: 11,
@@ -458,7 +472,7 @@ export default function SupplyBody({ agent }) {
                         {o.status}
                       </span>
                     </div>
-                    <p style={{ fontSize: 13, color: '#e5e7eb', marginTop: 6, fontWeight: 500 }}>
+                    <p style={{ fontSize: 13, color: '#e2e8f0', marginTop: 6, fontWeight: 500 }}>
                       {o.item} <small style={{ color: '#9ca3af' }}>({o.qty} units)</small>
                     </p>
                     <em style={{ fontSize: 12, color: '#9ca3af', marginTop: 4, display: 'block' }}>ETA: {o.eta}</em>
@@ -468,14 +482,14 @@ export default function SupplyBody({ agent }) {
             </ol>
           </div>
 
-          {/* Executive Summary Metrics Block */}
+          {/* Summary Stats */}
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #1f2937' }}>
             <div className="card-title" style={{ fontSize: 15, marginBottom: 12 }}>Executive Vendor Telemetry</div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #1f2937' }}>
                 <span style={{ fontSize: 12, color: '#9ca3af', display: 'block' }}>Total Indian Vendors</span>
-                <strong style={{ fontSize: 20, color: '#f9fafc', marginTop: 2, display: 'block' }}>{suppliers.length}</strong>
+                <strong style={{ fontSize: 20, color: '#f8fafc', marginTop: 2, display: 'block' }}>{suppliers.length}</strong>
               </div>
 
               <div style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #10b98133' }}>
@@ -484,7 +498,7 @@ export default function SupplyBody({ agent }) {
               </div>
 
               <div style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #f59e0b33' }}>
-                <span style={{ fontSize: 12, color: '#9ca3af', display: 'block' }}>Medium / High Risk</span>
+                <span style={{ fontSize: 12, color: '#9ca3af', display: 'block' }}>Standard Vendors</span>
                 <strong style={{ fontSize: 20, color: '#f59e0b', marginTop: 2, display: 'block' }}>{suppliers.length - recCount}</strong>
               </div>
 

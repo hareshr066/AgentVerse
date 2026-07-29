@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Boxes, Warehouse, AlertTriangle, RefreshCw, Calculator, Plus, CheckCircle2, Search, Info, ShieldAlert, MapPin } from 'lucide-react';
+import { Boxes, Warehouse, AlertTriangle, RefreshCw, Calculator, Plus, CheckCircle2, Search, Info, ShieldAlert, Layers } from 'lucide-react';
 
 function pct(onHand, threshold) {
   if (!threshold || threshold === 0) return 100;
@@ -12,6 +12,14 @@ function statusColor(status) {
   if (s.includes('LOW')) return '#f59e0b';
   if (s.includes('OVERSTOCK')) return '#3b82f6';
   return '#10b981';
+}
+
+function statusBg(status) {
+  const s = (status || '').toUpperCase();
+  if (s.includes('CRITICAL')) return '#f43f5e18';
+  if (s.includes('LOW')) return '#f59e0b18';
+  if (s.includes('OVERSTOCK')) return '#3b82f618';
+  return '#10b98118';
 }
 
 export default function InventoryBody({ agent }) {
@@ -85,7 +93,7 @@ export default function InventoryBody({ agent }) {
         body: JSON.stringify(payload)
       });
       if (res.ok) {
-        setMsg(`Added '${prodName}' & saved calculation to DB!`);
+        setMsg(`Added '${prodName}' to Neon DB & calculated metrics!`);
         setProdName('');
         setCurrStock('');
         setDailyUsage('');
@@ -108,7 +116,6 @@ export default function InventoryBody({ agent }) {
     if (filterTab === 'CRITICAL') return matchesSearch && st.includes('CRITICAL');
     if (filterTab === 'LOW') return matchesSearch && (st.includes('LOW') || st.includes('CRITICAL'));
     if (filterTab === 'HEALTHY') return matchesSearch && (st.includes('OK') || st.includes('HEALTHY') || st.includes('IN_STOCK'));
-    if (filterTab === 'OVERSTOCK') return matchesSearch && st.includes('OVERSTOCK');
     return matchesSearch;
   });
 
@@ -128,34 +135,34 @@ export default function InventoryBody({ agent }) {
     : 95;
 
   return (
-    <div style={{ fontSize: 14 }}>
+    <div style={{ fontSize: 14, color: '#f3f4f6' }}>
       {/* Top Prominent KPI Gauges */}
       <div className="gauge-row" style={{ gap: 16, marginBottom: 20 }}>
         <div className="card gauge-card" style={{ padding: 20 }}>
           <div className="gauge" style={{ '--accent': agent.accent, '--val': Math.min(100, parseFloat(avgRunway) * 4), width: 90, height: 90 }}>
-            <span style={{ fontSize: 20 }}>{avgRunway}<small style={{ fontSize: 11 }}>days</small></span>
+            <span style={{ fontSize: 20, color: '#fff' }}>{avgRunway}<small style={{ fontSize: 11 }}>days</small></span>
           </div>
-          <p style={{ fontSize: 15, fontWeight: 600, marginTop: 10 }}>Avg Stock Runway</p>
+          <p style={{ fontSize: 15, fontWeight: 600, marginTop: 10, color: '#e5e7eb' }}>Avg Stock Runway</p>
         </div>
         <div className="card gauge-card" style={{ padding: 20 }}>
-          <div className="gauge" style={{ '--accent': '#f43f5e', '--val': Math.min(100, criticalCount * 20), width: 90, height: 90 }}>
-            <span style={{ fontSize: 20 }}>{criticalCount}<small style={{ fontSize: 11 }}>SKUs</small></span>
+          <div className="gauge" style={{ '--accent': '#f43f5e', '--val': Math.min(100, criticalCount * 25), width: 90, height: 90 }}>
+            <span style={{ fontSize: 20, color: '#fff' }}>{criticalCount}<small style={{ fontSize: 11 }}>SKUs</small></span>
           </div>
-          <p style={{ fontSize: 15, fontWeight: 600, marginTop: 10 }}>Critical Reorder Alerts</p>
+          <p style={{ fontSize: 15, fontWeight: 600, marginTop: 10, color: '#e5e7eb' }}>Critical Reorder Alerts</p>
         </div>
         <div className="card gauge-card" style={{ padding: 20 }}>
           <div className="gauge" style={{ '--accent': '#10b981', '--val': fillRate, width: 90, height: 90 }}>
-            <span style={{ fontSize: 20 }}>{fillRate}<small style={{ fontSize: 11 }}>%</small></span>
+            <span style={{ fontSize: 20, color: '#fff' }}>{fillRate}<small style={{ fontSize: 11 }}>%</small></span>
           </div>
-          <p style={{ fontSize: 15, fontWeight: 600, marginTop: 10 }}>Inventory Fill Rate</p>
+          <p style={{ fontSize: 15, fontWeight: 600, marginTop: 10, color: '#e5e7eb' }}>Inventory Fill Rate</p>
         </div>
       </div>
 
       {/* Action Header Controls */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 13 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 14 }}>
           <span style={{ color: error ? '#f59e0b' : '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {error ? '⚠ ' + error : `🇮🇳 Neon Cloud Synced · ${stock.length} Live Indian Manufacturing SKUs (${lastUpdated || 'Active'})`}
+            {error ? '⚠ ' + error : `🇮🇳 Neon DB Connected · ${stock.length} Live Indian Manufacturing SKUs (${lastUpdated || 'Active'})`}
           </span>
           <button onClick={fetchInventory} style={{ background: 'none', border: 'none', cursor: 'pointer', color: agent.accent, fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
             <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
@@ -167,7 +174,7 @@ export default function InventoryBody({ agent }) {
             onClick={() => setShowFormulaInfo(!showFormulaInfo)}
             style={{ padding: '8px 14px', fontSize: 13, background: '#1f2937', color: '#e5e7eb', border: '1px solid #374151', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}
           >
-            <Info size={15} color="#3b82f6" /> {showFormulaInfo ? 'Hide Formulas' : 'View Math Logic'}
+            <Info size={15} color="#3b82f6" /> {showFormulaInfo ? 'Hide Logic' : 'View Math Logic'}
           </button>
           <button
             onClick={handleRecalculate}
@@ -252,12 +259,12 @@ export default function InventoryBody({ agent }) {
         </div>
       )}
 
-      {/* Main Stock Table */}
+      {/* Main Stock List Grid */}
       <div className="grid" style={{ gap: 16 }}>
         <div className="card span-8" style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
             <div className="card-title" style={{ margin: 0, fontSize: 17, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Boxes size={20} color={agent.accent} /> Live Indian Inventory Materials ({filteredStock.length})
+              <Boxes size={20} color={agent.accent} /> Live Inventory Materials ({filteredStock.length})
             </div>
 
             {/* Search and Tabs */}
@@ -269,7 +276,7 @@ export default function InventoryBody({ agent }) {
                   placeholder="Search material SKU..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  style={{ padding: '7px 12px 7px 32px', background: '#111827', border: '1px solid #374151', borderRadius: 6, color: '#fff', fontSize: 13, width: 200, height: 36 }}
+                  style={{ padding: '7px 12px 7px 32px', background: '#111827', border: '1px solid #374151', borderRadius: 6, color: '#fff', fontSize: 13, width: 190, height: 36 }}
                 />
               </div>
 
@@ -296,35 +303,76 @@ export default function InventoryBody({ agent }) {
             </div>
           </div>
 
-          <div className="stock-list" style={{ maxHeight: 560, overflowY: 'auto', paddingRight: 4 }}>
+          {/* Material Stock List */}
+          <div style={{ maxHeight: 600, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
             {filteredStock.map((s) => {
               const threshold = s.reorder_point || s.safety_stock || 100;
               const isLow = s.current_stock < threshold;
               const color = statusColor(s.status);
+              const bg = statusBg(s.status);
+
               return (
-                <div className="stock-row" key={s.id || s.product_name} style={{ padding: '12px 14px', borderBottom: '1px solid #1f2937', background: '#111827', borderRadius: 6, marginBottom: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <div className="stock-name" style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, color: '#f3f4f6' }}>
-                      {isLow && <ShieldAlert size={16} color="#f43f5e" />}
-                      {s.product_name}
-                      <span style={{ fontSize: 11, background: `${color}22`, color: color, padding: '2px 8px', borderRadius: 4, border: `1px solid ${color}44`, fontWeight: 600 }}>
+                <div
+                  key={s.id || s.product_name}
+                  style={{
+                    background: '#111827',
+                    border: '1px solid #1f2937',
+                    borderRadius: 10,
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                  }}
+                >
+                  {/* Top Bar: Name, Status Pill, Current Stock */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {isLow && <ShieldAlert size={18} color="#f43f5e" />}
+                      <span style={{ fontSize: 16, fontWeight: 'bold', color: '#ffffff' }}>
+                        {s.product_name}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          background: bg,
+                          color: color,
+                          padding: '3px 10px',
+                          borderRadius: 12,
+                          border: `1px solid ${color}44`,
+                          fontWeight: 'bold'
+                        }}
+                      >
                         {s.status}
                       </span>
                     </div>
-                    <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 6, display: 'flex', gap: 14 }}>
-                      <span>Reorder ROP: <strong style={{ color: '#f3f4f6' }}>{s.reorder_point || 0}</strong></span>
-                      <span>Safety Stock: <strong style={{ color: '#f3f4f6' }}>{s.safety_stock || 0}</strong></span>
-                      <span>Optimal EOQ: <strong style={{ color: '#10b981' }}>{s.eoq || 0}</strong> units</span>
+
+                    <div style={{ textAlign: 'right', fontSize: 18, fontWeight: 'bold', color: isLow ? '#f43f5e' : '#ffffff' }}>
+                      {s.current_stock?.toLocaleString()} <small style={{ fontSize: 12, color: '#9ca3af', fontWeight: 'normal' }}>units</small>
                     </div>
                   </div>
 
-                  <div className="stock-track" style={{ width: 150, height: 10, background: '#1f2937', borderRadius: 5 }}>
-                    <span className="stock-thresh" style={{ left: `${pct(threshold, threshold)}%`, height: 14, top: -2 }} />
-                    <span className="stock-fill" style={{ width: `${pct(s.current_stock, threshold)}%`, background: color, borderRadius: 5 }} />
+                  {/* Stock Level Progress Track */}
+                  <div style={{ height: 8, background: '#1f2937', borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct(s.current_stock, threshold)}%`, background: color, borderRadius: 4 }} />
                   </div>
 
-                  <div className="stock-num" style={{ textAlign: 'right', minWidth: 100, fontWeight: 'bold', fontSize: 16, color: isLow ? '#f43f5e' : '#f3f4f6' }}>
-                    {s.current_stock?.toLocaleString()} <small style={{ fontWeight: 'normal', color: '#9ca3af', fontSize: 12 }}>units</small>
+                  {/* Metrics Bar (ROP, Safety Stock, EOQ) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 2 }}>
+                    <div style={{ background: '#0f172a', padding: '8px 12px', borderRadius: 6, textAlign: 'center', border: '1px solid #1e293b' }}>
+                      <span style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 2 }}>Reorder Point (ROP)</span>
+                      <strong style={{ fontSize: 14, color: '#f8fafc' }}>{s.reorder_point || 0} units</strong>
+                    </div>
+
+                    <div style={{ background: '#0f172a', padding: '8px 12px', borderRadius: 6, textAlign: 'center', border: '1px solid #1e293b' }}>
+                      <span style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 2 }}>Safety Buffer</span>
+                      <strong style={{ fontSize: 14, color: '#f8fafc' }}>{s.safety_stock || 0} units</strong>
+                    </div>
+
+                    <div style={{ background: '#0f172a', padding: '8px 12px', borderRadius: 6, textAlign: 'center', border: '1px solid #1e293b' }}>
+                      <span style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 2 }}>Optimal EOQ</span>
+                      <strong style={{ fontSize: 14, color: '#10b981' }}>{s.eoq || 0} units</strong>
+                    </div>
                   </div>
                 </div>
               );
@@ -332,46 +380,57 @@ export default function InventoryBody({ agent }) {
           </div>
         </div>
 
-        {/* Warehouse Metrics */}
-        <div className="card span-4" style={{ padding: 20 }}>
-          <div className="card-title" style={{ fontSize: 17, display: 'flex', alignItems: 'center', gap: 8 }}><Warehouse size={20} color={agent.accent} /> Indian Hub Telemetry</div>
-          <div className="wh-list" style={{ gap: 14 }}>
-            <div className="wh-item">
-              <div className="wh-top" style={{ fontSize: 13 }}><b>WH-1 (Jamshedpur)</b><span>Steel & Metal Hub</span><em>86%</em></div>
-              <div className="wh-bar" style={{ height: 8 }}><span style={{ width: '86%', background: agent.accent }} /></div>
-            </div>
-            <div className="wh-item">
-              <div className="wh-top" style={{ fontSize: 13 }}><b>WH-2 (Pune)</b><span>Auto Component Hub</span><em>68%</em></div>
-              <div className="wh-bar" style={{ height: 8 }}><span style={{ width: '68%', background: agent.accent }} /></div>
-            </div>
-            <div className="wh-item">
-              <div className="wh-top" style={{ fontSize: 13 }}><b>WH-3 (Bengaluru)</b><span>Electronics & Sensors</span><em>52%</em></div>
-              <div className="wh-bar" style={{ height: 8 }}><span style={{ width: '52%', background: agent.accent }} /></div>
-            </div>
-            <div className="wh-item">
-              <div className="wh-top" style={{ fontSize: 13 }}><b>WH-4 (Hazira)</b><span>Polymers & Petrochem</span><em>74%</em></div>
-              <div className="wh-bar" style={{ height: 8 }}><span style={{ width: '74%', background: agent.accent }} /></div>
+        {/* Right Column: Warehouse Telemetry */}
+        <div className="card span-4" style={{ padding: 20, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <div className="card-title" style={{ fontSize: 17, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}><Warehouse size={20} color={agent.accent} /> Industrial Warehouse Hubs</div>
+            <div className="wh-list" style={{ gap: 16 }}>
+              <div className="wh-item" style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #1f2937' }}>
+                <div className="wh-top" style={{ fontSize: 13, marginBottom: 6 }}><b>WH-1 (Jamshedpur)</b><span style={{ color: '#9ca3af' }}>Steel & Metal Hub</span><em style={{ color: agent.accent, fontWeight: 'bold' }}>86%</em></div>
+                <div className="wh-bar" style={{ height: 8, background: '#1f2937', borderRadius: 4 }}><span style={{ width: '86%', background: agent.accent, display: 'block', height: '100%', borderRadius: 4 }} /></div>
+              </div>
+              <div className="wh-item" style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #1f2937' }}>
+                <div className="wh-top" style={{ fontSize: 13, marginBottom: 6 }}><b>WH-2 (Pune)</b><span style={{ color: '#9ca3af' }}>Auto Component Hub</span><em style={{ color: agent.accent, fontWeight: 'bold' }}>68%</em></div>
+                <div className="wh-bar" style={{ height: 8, background: '#1f2937', borderRadius: 4 }}><span style={{ width: '68%', background: agent.accent, display: 'block', height: '100%', borderRadius: 4 }} /></div>
+              </div>
+              <div className="wh-item" style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #1f2937' }}>
+                <div className="wh-top" style={{ fontSize: 13, marginBottom: 6 }}><b>WH-3 (Bengaluru)</b><span style={{ color: '#9ca3af' }}>Sensors & Electronics</span><em style={{ color: agent.accent, fontWeight: 'bold' }}>52%</em></div>
+                <div className="wh-bar" style={{ height: 8, background: '#1f2937', borderRadius: 4 }}><span style={{ width: '52%', background: agent.accent, display: 'block', height: '100%', borderRadius: 4 }} /></div>
+              </div>
+              <div className="wh-item" style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #1f2937' }}>
+                <div className="wh-top" style={{ fontSize: 13, marginBottom: 6 }}><b>WH-4 (Hazira)</b><span style={{ color: '#9ca3af' }}>Polymers & Petrochem</span><em style={{ color: agent.accent, fontWeight: 'bold' }}>74%</em></div>
+                <div className="wh-bar" style={{ height: 8, background: '#1f2937', borderRadius: 4 }}><span style={{ width: '74%', background: agent.accent, display: 'block', height: '100%', borderRadius: 4 }} /></div>
+              </div>
             </div>
           </div>
 
-          <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid #1f2937', fontSize: 13, color: '#9ca3af' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span>Total Neon DB SKUs</span><strong style={{ color: '#f3f4f6' }}>{stock.length}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span>Reorder Triggers (Critical)</span><strong style={{ color: '#f43f5e' }}>{criticalCount + lowCount}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span>Average Daily Usage</span>
-              <strong style={{ color: '#38bdf8' }}>
-                {stock.length ? (stock.reduce((a, b) => a + (b.average_daily_usage || 0), 0) / stock.length).toFixed(1) : 0} units/day
-              </strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Average Recommended EOQ</span>
-              <strong style={{ color: '#10b981' }}>
-                {stock.length ? Math.round(stock.reduce((a, b) => a + (b.eoq || 0), 0) / stock.length) : 0} units
-              </strong>
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #1f2937' }}>
+            <div className="card-title" style={{ fontSize: 15, marginBottom: 12 }}>Executive Telemetry</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #1f2937' }}>
+                <span style={{ fontSize: 12, color: '#9ca3af', display: 'block' }}>Total Neon SKUs</span>
+                <strong style={{ fontSize: 20, color: '#f8fafc', marginTop: 2, display: 'block' }}>{stock.length}</strong>
+              </div>
+
+              <div style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #f43f5e33' }}>
+                <span style={{ fontSize: 12, color: '#9ca3af', display: 'block' }}>Reorder Triggers</span>
+                <strong style={{ fontSize: 20, color: '#f43f5e', marginTop: 2, display: 'block' }}>{criticalCount + lowCount}</strong>
+              </div>
+
+              <div style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #3b82f633' }}>
+                <span style={{ fontSize: 12, color: '#9ca3af', display: 'block' }}>Avg Usage/Day</span>
+                <strong style={{ fontSize: 18, color: '#38bdf8', marginTop: 2, display: 'block' }}>
+                  {stock.length ? (stock.reduce((a, b) => a + (b.average_daily_usage || 0), 0) / stock.length).toFixed(1) : 0} u
+                </strong>
+              </div>
+
+              <div style={{ background: '#111827', padding: 12, borderRadius: 8, border: '1px solid #10b98133' }}>
+                <span style={{ fontSize: 12, color: '#9ca3af', display: 'block' }}>Avg EOQ Batch</span>
+                <strong style={{ fontSize: 18, color: '#10b981', marginTop: 2, display: 'block' }}>
+                  {stock.length ? Math.round(stock.reduce((a, b) => a + (b.eoq || 0), 0) / stock.length) : 0} u
+                </strong>
+              </div>
             </div>
           </div>
         </div>
