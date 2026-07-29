@@ -37,6 +37,7 @@ async function get(base, path, params = {}) {
 
 /* ──────────────────────────────────────────────
    1. Event Parsing Agent (8001)
+   Backend: GET /event-score?product=&city=
    ────────────────────────────────────────────── */
 export async function getEventScore(product, city) {
   return get(EVENT_BASE, '/event-score', { product, city });
@@ -47,9 +48,10 @@ export async function checkEventHealth() {
 
 /* ──────────────────────────────────────────────
    2. Demand Forecast Agent (8002)
+   Backend: POST /api/v1/predict-demand
    ────────────────────────────────────────────── */
 export async function predictDemand(payload) {
-  return post(DEMAND_BASE, '/predict-demand', payload);
+  return post(DEMAND_BASE, '/api/v1/predict-demand', payload);
 }
 export async function checkDemandHealth() {
   return get(DEMAND_BASE, '/health');
@@ -57,6 +59,7 @@ export async function checkDemandHealth() {
 
 /* ──────────────────────────────────────────────
    3. Inventory Agent (8003)
+   Backend: POST /inventory/calculate
    ────────────────────────────────────────────── */
 export async function calculateInventory(payload) {
   return post(INVENTORY_BASE, '/inventory/calculate', payload);
@@ -67,9 +70,23 @@ export async function checkInventoryHealth() {
 
 /* ──────────────────────────────────────────────
    4. Supply Chain Agent (8004)
+   Backend: POST /suppliers/ (CRUD with risk auto-scored)
+   Maps frontend rating/delay fields to backend SupplierCreate schema.
    ────────────────────────────────────────────── */
 export async function analyzeSupply(payload) {
-  return post(SUPPLY_BASE, '/supply/analyze', payload);
+  return post(SUPPLY_BASE, '/suppliers/', {
+    supplier_name: payload.supplier_name,
+    material_name: payload.material_name || 'General Supply',
+    available_quantity: payload.available_quantity || 100,
+    lead_time_days: payload.expected_delivery_days || 5,
+    price_per_unit: payload.price_per_unit || 10.0,
+    delivery_delay_days: Math.max(0, (payload.actual_delivery_days || 0) - (payload.expected_delivery_days || 0)),
+    quality_score: (payload.supplier_rating || 4.0) * 20,  // 0-5 → 0-100
+    on_time_delivery_percentage: payload.on_time_delivery_percentage || 90.0,
+  });
+}
+export async function getSuppliers() {
+  return get(SUPPLY_BASE, '/suppliers/');
 }
 export async function checkSupplyHealth() {
   return get(SUPPLY_BASE, '/health');
@@ -77,6 +94,7 @@ export async function checkSupplyHealth() {
 
 /* ──────────────────────────────────────────────
    5. Production Planning Agent (8005)
+   Backend: POST /api/v1/production-plan
    ────────────────────────────────────────────── */
 export async function generateProductionPlan(payload) {
   return post(PRODUCTION_BASE, '/api/v1/production-plan', payload);
@@ -86,7 +104,8 @@ export async function checkProductionHealth() {
 }
 
 /* ──────────────────────────────────────────────
-   6. Gemini Recommendation Agent (8006)
+   6. Recommendation Agent (8006)
+   Backend: POST /api/v1/recommend
    ────────────────────────────────────────────── */
 export async function generateRecommendation(payload) {
   return post(RECOMMENDATION_BASE, '/api/v1/recommend', payload);
@@ -96,13 +115,13 @@ export async function checkRecommendationHealth() {
 }
 
 /* ──────────────────────────────────────────────
-   Orchestrator Gateway (8000) & Database Routes
+   Orchestrator Gateway (8000) & History Routes
    ────────────────────────────────────────────── */
 export async function triggerSyncPipeline(payload) {
   return post(ORCHESTRATOR_BASE, '/pipeline/sync', payload);
 }
 export async function checkOrchestratorHealth() {
-  return get(ORCHESTRATOR_BASE, '/status');
+  return get(ORCHESTRATOR_BASE, '/health');
 }
 export async function getEventsHistory() {
   return get(ORCHESTRATOR_BASE, '/events/history');
