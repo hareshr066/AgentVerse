@@ -5,7 +5,7 @@ Aggregates outputs from the four upstream agents (Demand Forecast,
 Inventory, Supply Chain, and Production Planning) into a single payload
 so the Recommendation Agent can produce a holistic executive recommendation.
 
-Supports both flat and nested JSON payloads gracefully.
+Supports both flat and nested JSON payloads, plus optional chat questions.
 """
 
 from pydantic import BaseModel, Field, model_validator
@@ -114,10 +114,14 @@ class RecommendationRequest(BaseModel):
     """
     Full input payload for the Recommendation Agent.
 
-    Supports both flat JSON bodies (e.g. {"forecast": 12000, "inventory": 4000, ...})
-    and nested JSON bodies (e.g. {"demand": {...}, "inventory": {...}, ...}).
+    Supports flat JSON bodies, nested JSON bodies, and chat queries.
     """
 
+    question: Optional[str] = Field(
+        default=None,
+        description="User question for the AI Manufacturing Consultant.",
+        examples=["Should I increase production?"],
+    )
     demand: DemandData = Field(
         ...,
         description="Demand forecast data.",
@@ -146,6 +150,10 @@ class RecommendationRequest(BaseModel):
 
         product = data.get("product") or "Air Conditioner"
         forecast = data.get("forecast") if data.get("forecast") is not None else data.get("forecast_demand")
+
+        # Extract question if provided at top-level
+        if "question" in data and "question" not in data:
+            pass
 
         # Normalize Demand
         if "demand" not in data or not isinstance(data["demand"], dict):
@@ -206,6 +214,7 @@ class RecommendationRequest(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
+                "question": "Should I increase production?",
                 "forecast": 12000,
                 "inventory": 4000,
                 "supplier_delay": True,

@@ -12,30 +12,30 @@ rec_service = RecommendationService()
 
 @router.post("/analyze", status_code=status.HTTP_200_OK)
 async def analyze_recommendations(request: Dict[str, Any]):
-    # Generate intelligent structured recommendations from factory inputs
     result = await rec_service.get_combined_recommendation(request)
     return result
 
+@router.post("/chat", response_model=RecommendationResponse, status_code=status.HTTP_200_OK, tags=["Recommendations"])
+@router.post("/recommend/chat", response_model=RecommendationResponse, status_code=status.HTTP_200_OK, tags=["Recommendations"])
 @router.post("/recommendation/generate", response_model=RecommendationResponse, status_code=status.HTTP_200_OK, tags=["Recommendations"])
 @router.post("/generate", response_model=RecommendationResponse, status_code=status.HTTP_200_OK, tags=["Recommendations"])
 @router.post(
     "/recommend",
     response_model=RecommendationResponse,
     status_code=status.HTTP_200_OK,
-    summary="Generate executive recommendations",
+    summary="Generate executive recommendations or chat response",
     description=(
-        "Accepts aggregated outputs from the Demand Forecast, Inventory, "
-        "Supply Chain, and Production Planning agents. "
-        "Returns an executive recommendation report covering production, "
-        "inventory, supplier, risk analysis, and a summary. "
-        "Rule-based by default; Gemini AI enhancement activates automatically "
-        "when GEMINI_API_KEY is set."
+        "Accepts aggregated outputs from Demand, Inventory, Supply, and Production agents "
+        "plus an optional user chat question. "
+        "Returns a structured executive recommendation report using full manufacturing context."
     ),
     tags=["Recommendations"],
 )
 async def get_recommendation(request: RecommendationRequest) -> RecommendationResponse:
     logger.info(
-        "POST /recommend — product='%s'", request.demand.product
+        "POST /recommend — product='%s' | question='%s'",
+        request.demand.product,
+        request.question or "",
     )
 
     try:
