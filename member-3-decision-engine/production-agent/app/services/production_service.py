@@ -40,15 +40,32 @@ class ProductionPlannerService:
         try:
             q_inv = text("""
                 SELECT product_name, current_stock, average_daily_usage, lead_time, safety_stock, reorder_point, eoq, status
-                FROM inventory
+                FROM inventories
                 WHERE LOWER(product_name) = LOWER(:pname)
+                   OR LOWER(product_name) LIKE '%' || LOWER(:pname) || '%'
+                   OR LOWER(:pname) LIKE '%' || LOWER(product_name) || '%'
                 LIMIT 1
             """)
-            if isinstance(db, AsyncSession):
-                # Handle async if passed
-                inv_record = None
-            else:
-                inv_record = db.execute(q_inv, {"pname": product_name}).fetchone()
+            inv_record = db.execute(q_inv, {"pname": product_name}).fetchone()
+            if not inv_record:
+                q_inv_alt = text("""
+                    SELECT product_name, current_stock, average_daily_usage, lead_time, safety_stock, reorder_point, eoq, status
+                    FROM inventory
+                    WHERE LOWER(product_name) = LOWER(:pname)
+                       OR LOWER(product_name) LIKE '%' || LOWER(:pname) || '%'
+                       OR LOWER(:pname) LIKE '%' || LOWER(product_name) || '%'
+                    LIMIT 1
+                """)
+                inv_record = db.execute(q_inv_alt, {"pname": product_name}).fetchone()
+            
+            if not inv_record:
+                q_inv_first = text("""
+                    SELECT product_name, current_stock, average_daily_usage, lead_time, safety_stock, reorder_point, eoq, status
+                    FROM inventories
+                    ORDER BY id ASC
+                    LIMIT 1
+                """)
+                inv_record = db.execute(q_inv_first).fetchone()
         except Exception as exc:
             logger.error("Database connection failure while reading inventory: %s", str(exc))
             raise HTTPException(

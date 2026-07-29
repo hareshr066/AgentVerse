@@ -47,17 +47,29 @@ class RecommendationService:
         try:
             q_inv = text("""
                 SELECT product_name, current_stock, average_daily_usage, lead_time, safety_stock, reorder_point, eoq, status
-                FROM inventory
+                FROM inventories
                 WHERE LOWER(product_name) = LOWER(:pname)
+                   OR LOWER(product_name) LIKE '%' || LOWER(:pname) || '%'
+                   OR LOWER(:pname) LIKE '%' || LOWER(product_name) || '%'
                 LIMIT 1
             """)
             if not isinstance(db, AsyncSession):
                 inv_data = db.execute(q_inv, {"pname": target_product}).fetchone()
+                if not inv_data:
+                    q_inv_alt = text("""
+                        SELECT product_name, current_stock, average_daily_usage, lead_time, safety_stock, reorder_point, eoq, status
+                        FROM inventory
+                        WHERE LOWER(product_name) = LOWER(:pname)
+                           OR LOWER(product_name) LIKE '%' || LOWER(:pname) || '%'
+                           OR LOWER(:pname) LIKE '%' || LOWER(product_name) || '%'
+                        LIMIT 1
+                    """)
+                    inv_data = db.execute(q_inv_alt, {"pname": target_product}).fetchone()
                 # If target product not found, try getting any record to prevent empty analysis
                 if not inv_data:
                     q_first = text("""
                         SELECT product_name, current_stock, average_daily_usage, lead_time, safety_stock, reorder_point, eoq, status
-                        FROM inventory LIMIT 1
+                        FROM inventories ORDER BY id ASC LIMIT 1
                     """)
                     inv_data = db.execute(q_first).fetchone()
         except Exception as exc:
@@ -386,10 +398,11 @@ class RecommendationService:
 
     async def _try_ai_chat_enhancement(self, question: str, context_str: str) -> Optional[str]:
         try:
+            import asyncio
             full_prompt = f"{SYSTEM_PROMPT}\n\n{context_str}\n\nUSER QUESTION: {question}\n\nProvide an expert executive report:"
-            result = await self._gemini.get_recommendation(full_prompt)
+            result = await asyncio.wait_for(self._gemini.get_recommendation(full_prompt), timeout=2.0)
             if result and len(result.strip()) > 20:
                 return result.strip()
         except Exception as exc:
-            logger.warning("Gemini AI chat enhancement failed: %s", exc)
+            logger.warning("Gemini AI chat enhancement failed or timed out: %s", exc)
         return None

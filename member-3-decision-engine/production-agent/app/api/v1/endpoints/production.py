@@ -29,6 +29,8 @@ class ProductionPlanResponse(BaseModel):
     class Config:
         from_attributes = True
 
+from sqlalchemy import text
+
 @router.get("/", response_model=List[ProductionPlanResponse])
 def get_plans(db: Session = Depends(get_db)):
     try:
@@ -37,6 +39,30 @@ def get_plans(db: Session = Depends(get_db)):
         logger.error("Failed to query production plans: %s", str(exc))
         plans = []
     
+    if not plans:
+        try:
+            items = db.execute(text("SELECT id, product_name, current_stock, status FROM inventories")).fetchall()
+            if not items:
+                items = db.execute(text("SELECT id, product_name, current_stock, status FROM inventory")).fetchall()
+                
+            for item in items:
+                p_id, pname, stock, pstatus = item[0], item[1], item[2], str(item[3] or "IN_STOCK")
+                qty = max(100, 500 - int(stock or 0)) if int(stock or 0) < 500 else 250
+                mat_list = [f"{pname.split()[0]} Raw Material", "Assembly Components"]
+                new_plan = ProductionPlan(
+                    id=p_id,
+                    product_name=pname,
+                    quantity=qty,
+                    status="IN_PROGRESS" if pstatus.lower() in ["critical", "low stock"] else "PLANNED",
+                    materials_needed=mat_list
+                )
+                db.add(new_plan)
+            db.commit()
+            plans = db.query(ProductionPlan).all()
+        except Exception as seed_err:
+            logger.warning("Could not auto-seed production_plans from database inventories: %s", str(seed_err))
+            db.rollback()
+
     if not plans:
         return [
             ProductionPlanResponse(

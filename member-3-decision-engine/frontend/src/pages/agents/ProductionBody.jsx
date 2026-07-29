@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Factory, Gauge, Calendar, AlertTriangle, Play, RefreshCw,
   Cpu, CheckCircle2, DollarSign, Globe, Sun, Layers, Clock, TrendingUp
@@ -7,7 +7,7 @@ import { AgentChart } from '../../components/widgets.jsx';
 
 export default function ProductionBody({ agent }) {
   // ── Input State for Interactive Simulator ───────────────────────────
-  const [product, setProduct] = useState('Air Conditioner');
+  const [product, setProduct] = useState('Hindalco Aluminium Sheets 4mm');
   const [forecastDemand, setForecastDemand] = useState(12000);
   const [currentInventory, setCurrentInventory] = useState(4200);
   const [safetyStock, setSafetyStock] = useState(1000);
@@ -20,10 +20,42 @@ export default function ProductionBody({ agent }) {
   const [season, setSeason] = useState('Summer (Peak)');
 
   const [loading, setLoading] = useState(false);
+  const [dbProducts, setDbProducts] = useState([]);
+
+  // Fetch real database items on mount
+  useEffect(() => {
+    async function loadDbItems() {
+      try {
+        const res = await fetch('/api/inventory/inventory/');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setDbProducts(data);
+            const first = data[0];
+            setProduct(first.product_name);
+            setCurrentInventory(first.current_stock || 0);
+            if (first.safety_stock) setSafetyStock(first.safety_stock);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not load inventory items from DB:', e);
+      }
+    }
+    loadDbItems();
+  }, []);
+
+  const handleProductSelect = (selectedName) => {
+    setProduct(selectedName);
+    const found = dbProducts.find((p) => p.product_name === selectedName);
+    if (found) {
+      setCurrentInventory(found.current_stock || 0);
+      if (found.safety_stock) setSafetyStock(found.safety_stock);
+    }
+  };
 
   // ── Calculated / Computed Plan State ────────────────────────────────
   const [plan, setPlan] = useState({
-    product: 'Air Conditioner',
+    product: 'Hindalco Aluminium Sheets 4mm',
     production_quantity: 8800,
     production_days: 10,
     capacity_utilization: '98%',
@@ -34,7 +66,7 @@ export default function ProductionBody({ agent }) {
       { machine: 'Machine A', allocated: 500, shift_hours: 8.0, utilization: 100, status: 'Running' },
       { machine: 'Machine B', allocated: 400, shift_hours: 8.0, utilization: 95, status: 'Running' },
     ],
-    bottlenecks: ['Supplier delay active (4 days)', 'Demand deficit of 7,800 units'],
+    bottlenecks: ['Supplier delay active (4 days)', 'Demand deficit detected'],
     optimized_usage: 'Production distributed across 2 machines operating at 98% capacity utilization over 10 days.',
   });
 
@@ -61,7 +93,7 @@ export default function ProductionBody({ agent }) {
     };
 
     try {
-      const res = await fetch('http://localhost:8003/production-plan', {
+      const res = await fetch('http://localhost:8005/production-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -147,12 +179,22 @@ export default function ProductionBody({ agent }) {
         <div className="form-grid">
           <div className="form-group">
             <label>Product Name</label>
-            <select value={product} onChange={(e) => setProduct(e.target.value)}>
-              <option value="Air Conditioner">Air Conditioner</option>
-              <option value="Refrigerator">Refrigerator</option>
-              <option value="Washing Machine">Washing Machine</option>
-              <option value="Air Purifier">Air Purifier</option>
-              <option value="Fan">Fan</option>
+            <select value={product} onChange={(e) => handleProductSelect(e.target.value)}>
+              {dbProducts.length > 0 ? (
+                dbProducts.map((p) => (
+                  <option key={p.id || p.product_name} value={p.product_name}>
+                    {p.product_name} ({p.current_stock} in stock)
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="Hindalco Aluminium Sheets 4mm">Hindalco Aluminium Sheets 4mm</option>
+                  <option value="Bharat Forge Forged Crankshafts">Bharat Forge Forged Crankshafts</option>
+                  <option value="L&T 3-Phase Switchgears">L&T 3-Phase Switchgears</option>
+                  <option value="Sundram Fasteners M8/M12">Sundram Fasteners M8/M12</option>
+                  <option value="Polycab Armoured Copper Cables">Polycab Armoured Copper Cables</option>
+                </>
+              )}
             </select>
           </div>
 

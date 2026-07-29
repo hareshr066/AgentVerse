@@ -17,21 +17,72 @@ const SUGGESTED_QUESTIONS = [
 
 export default function RecommendationBody({ agent }) {
   // Manufacturing Context State
-  const [context] = useState({
-    product: 'Air Conditioner',
+  const [context, setContext] = useState({
+    product: 'Hindalco Aluminium Sheets 4mm',
     forecastDemand: 12000,
-    currentInventory: 4200,
-    safetyStock: 1000,
+    currentInventory: 12400,
+    safetyStock: 2500,
     supplierDelay: true,
     delayDays: 4,
     dailyCapacity: 900,
     productionQuantity: 8800,
     productionDays: 10,
     capacityUtilization: '98%',
-    riskLevel: 'High',
-    priority: 'High',
-    factoryStatus: 'HIGH DEMAND DEFICIT',
+    riskLevel: 'Normal',
+    priority: 'Normal',
+    factoryStatus: 'STABLE INVENTORY',
   });
+
+  // Fetch real database telemetry on mount
+  useEffect(() => {
+    async function loadLiveDbContext() {
+      try {
+        const res = await fetch('/api/inventory/inventory/');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const first = data[0];
+            setContext((prev) => ({
+              ...prev,
+              product: first.product_name || prev.product,
+              currentInventory: first.current_stock || prev.currentInventory,
+              safetyStock: first.safety_stock || prev.safetyStock,
+              factoryStatus: (first.status === 'LOW' || first.status === 'CRITICAL') ? 'LOW INVENTORY DEFICIT' : 'OPTIMAL INVENTORY STABLE',
+              riskLevel: (first.status === 'LOW' || first.status === 'CRITICAL') ? 'High' : 'Low',
+              priority: (first.status === 'LOW' || first.status === 'CRITICAL') ? 'High' : 'Normal',
+            }));
+
+            // Update initial greeting with real DB data
+            setMessages([
+              {
+                role: 'ai',
+                text: `Hello! I am your AI Manufacturing Consultant. Current database telemetry loaded for ${first.product_name} (${first.current_stock?.toLocaleString()} units in stock, Status: ${first.status || 'IN_STOCK'}). How can I assist you today?`,
+                structured: {
+                  executive_summary: `Database telemetry loaded for ${first.product_name}. Current inventory is ${first.current_stock?.toLocaleString()} units.`,
+                  current_situation: `Current stock is ${first.current_stock?.toLocaleString()} units against safety stock of ${first.safety_stock?.toLocaleString()} units.`,
+                  production_analysis: `Production run scheduled to maintain optimal buffer level for ${first.product_name}.`,
+                  inventory_analysis: `Inventory Status: ${first.status || 'IN_STOCK'}. Current stock: ${first.current_stock?.toLocaleString()} units.`,
+                  supply_chain_analysis: 'Supplier operations stable. Monitoring daily usage.',
+                  recommended_actions: [
+                    `Monitor ${first.product_name} stock level against reorder point (${first.reorder_point || 2000} units).`,
+                    'Maintain safety stock buffer.',
+                    'Review supplier lead times weekly.'
+                  ],
+                  business_impact: 'Prevents stockouts and optimizes production scheduling.',
+                  risk: (first.status === 'LOW' || first.status === 'CRITICAL') ? 'High' : 'Low',
+                  priority: (first.status === 'LOW' || first.status === 'CRITICAL') ? 'High' : 'Normal',
+                  confidence: '98%',
+                }
+              }
+            ]);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not load inventory items for recommendation context:', e);
+      }
+    }
+    loadLiveDbContext();
+  }, []);
 
   // Chat Conversation State
   const [messages, setMessages] = useState([
@@ -39,20 +90,20 @@ export default function RecommendationBody({ agent }) {
       role: 'ai',
       text: 'Hello! I am your AI Manufacturing Consultant with 20+ years of manufacturing operations experience. How can I assist you with today\'s production planning and decision-making?',
       structured: {
-        executive_summary: 'Demand is expected to increase significantly for Air Conditioners.',
-        current_situation: 'Demand (12,000 units) exceeds current inventory (4,200 units) by 7,800 units with an active 4-day supplier delay.',
+        executive_summary: 'Demand is expected to increase for Hindalco Aluminium Sheets 4mm.',
+        current_situation: 'Current inventory is 12,400 units against safety stock of 2,500 units.',
         production_analysis: 'Planned production of 8,800 units over 10 working days operating at 98% capacity utilization.',
-        inventory_analysis: 'Inventory level (4,200 units) is low relative to forecast demand.',
-        supply_chain_analysis: 'Active 4-day supplier delay detected; secondary supplier activation is recommended.',
+        inventory_analysis: 'Inventory level (12,400 units) is stable.',
+        supply_chain_analysis: 'Monitoring supplier lead times.',
         recommended_actions: [
-          'Increase production by 20%.',
-          'Increase safety stock.',
-          'Use alternate supplier.'
+          'Monitor stock level against reorder point.',
+          'Maintain safety stock buffer.',
+          'Review supplier lead times weekly.'
         ],
-        business_impact: 'High business impact: Mitigates potential revenue loss on 7,800 units and prevents stockouts.',
-        risk: 'High',
-        priority: 'High',
-        confidence: '96%',
+        business_impact: 'Optimizes production scheduling and prevents stockouts.',
+        risk: 'Low',
+        priority: 'Normal',
+        confidence: '98%',
       }
     }
   ]);
@@ -92,7 +143,7 @@ export default function RecommendationBody({ agent }) {
     };
 
     try {
-      const res = await fetch('http://localhost:8004/recommend', {
+      const res = await fetch('http://localhost:8006/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

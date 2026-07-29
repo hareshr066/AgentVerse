@@ -1,6 +1,8 @@
 import sys
 import os
 import logging
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.core.config import settings
 
@@ -21,24 +23,46 @@ from shared.database import (
 
 logger = logging.getLogger("recommendation-agent.database")
 
-db_url_async = settings.DATABASE_URL
-if db_url_async.startswith("postgresql://"):
-    db_url_async = db_url_async.replace("postgresql://", "postgresql+asyncpg://")
-elif db_url_async.startswith("postgres://"):
-    db_url_async = db_url_async.replace("postgres://", "postgresql+asyncpg://")
+# Build sync database URL for connection testing
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgresql+asyncpg://"):
+    sync_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+else:
+    sync_url = db_url
 
-connect_args = {}
-if "sqlite" in db_url_async:
-    connect_args = {"check_same_thread": False}
-
+use_postgres = False
 try:
-    async_engine = create_async_engine(db_url_async, echo=False, connect_args=connect_args)
-    async_session = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
-except Exception as err:
-    logger.warning("Could not initialize async_engine for %s: %s", mask_url(db_url_async), str(err))
-    fallback_url = "sqlite+aiosqlite:///manusphere_fallback.db"
-    async_engine = create_async_engine(fallback_url, echo=False)
-    async_session = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+    test_engine = create_engine(
+        sync_url,
+        echo=False,
+        pool_pre_ping=True,
+        connect_args={"connect_timeout": 2}
+    )
+    with test_engine.connect() as conn:
+        pass
+    use_postgres = True
+    logger.info("Connected to Neon PostgreSQL cloud database via TCP.")
+except Exception:
+    logger.info("Outbound TCP 5432 restricted or unreachable. Operating via Member 2 SQLite database fallback.")
+
+if use_postgres:
+    engine = test_engine
+    db_url_async = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    async_engine = create_async_engine(db_url_async, echo=False)
+else:
+    inv_db_path = os.path.join(_project_root, "member-2-operations", "inventory-agent", "manusphere_inventory.db")
+    engine = create_engine(f"sqlite:///{inv_db_path}", connect_args={"check_same_thread": False})
+    async_engine = create_async_engine(f"sqlite+aiosqlite:///{inv_db_path}", echo=False, connect_args={"check_same_thread": False})
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+async_session = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 async def get_async_db():
     async with async_session() as session:
