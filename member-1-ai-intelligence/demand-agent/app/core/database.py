@@ -1,34 +1,31 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.config import settings
-import socket
-from urllib.parse import urlparse
-import logging
+import os, logging
 
 logger = logging.getLogger("demand-agent.database")
 
-db_url = settings.DATABASE_URL
+raw_url = settings.DATABASE_URL
+# Strip +asyncpg or +aiosqlite if using standard psycopg2/sqlite
+if "postgresql+asyncpg://" in raw_url:
+    raw_url = raw_url.replace("postgresql+asyncpg://", "postgresql://")
 
-# Sync TCP reachability check to prevent hanging on blocked firewalls
-reachable = False
+connect_args = {}
+if "sqlite" in raw_url:
+    connect_args = {"check_same_thread": False}
+
 try:
-    parsed = urlparse(db_url)
-    host = parsed.hostname
-    port = parsed.port or 5432
-    if host:
-        with socket.create_connection((host, port), timeout=2.0):
-            reachable = True
-except Exception:
-    pass
+    engine = create_engine(raw_url, connect_args=connect_args, pool_pre_ping=True)
+except Exception as e:
+    logger.warning("Database connection error (%s). Using local SQLite fallback.", str(e))
+    engine = create_engine("sqlite:///manusphere_fallback.db", connect_args={"check_same_thread": False})
 
-if not reachable and "sqlite" not in db_url:
-    logger.warning("Neon cloud database is unreachable on port %d. Falling back to local SQLite.", port)
-    db_url = "sqlite+aiosqlite:///manusphere_fallback.db"
-
-engine = create_async_engine(db_url, echo=False)
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-async def get_db():
-    async with async_session() as session:
-        yield session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

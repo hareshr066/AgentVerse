@@ -4,22 +4,24 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Default SQLite URL in case DATABASE_URL is not set or points to PG
 # We want database.db in the repository root or shared database directory
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "database.db")
-DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
+NEON_DB_URL = "postgresql://neondb_owner:npg_bYFkg6K2iJWz@ep-withered-shape-axrygj8o-pooler.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require"
+DATABASE_URL = os.environ.get("DATABASE_URL", NEON_DB_URL)
 
-# If we want SQLite override specifically for this setup:
-if "sqlite" in DATABASE_URL or not DATABASE_URL.startswith("postgresql"):
-    # Target SQLite database.db
-    if not DATABASE_URL.startswith("sqlite"):
-        DATABASE_URL = f"sqlite:///{DB_PATH}"
+if DATABASE_URL.startswith("postgresql://"):
+    # Convert postgresql:// to postgresql+psycopg2:// if needed or keep standard
+    pass
 
-# Connection settings matching sqlite or postgresql
 connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+try:
+    engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
+except Exception:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DB_PATH = os.path.join(BASE_DIR, "database.db")
+    engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

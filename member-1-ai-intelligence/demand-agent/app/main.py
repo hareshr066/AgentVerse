@@ -19,12 +19,10 @@ from app.core.database import Base, engine
 async def lifespan(app: FastAPI):
     # Automatically initialize db schema on startup
     try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        Base.metadata.create_all(bind=engine)
     except Exception:
         pass
     yield
-    await engine.dispose()
 
 
 app = FastAPI(
@@ -43,6 +41,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router)
 app.include_router(forecast.router, prefix="/forecast", tags=["forecast"])
 
 @app.get("/")
