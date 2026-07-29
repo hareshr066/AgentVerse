@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, status
+from fastapi import FastAPI, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
 from app.api.v1.router import api_router
 from app.api.v1.endpoints import production
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import Base, engine, get_db
 from app.core.logging import logger
 from app.schemas.production_request import ProductionPlanRequest
 from app.schemas.production_response import ProductionPlanResponse
@@ -13,14 +14,11 @@ from app.services.production_service import ProductionPlannerService
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Automatically initialize db schema on startup
     try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-    except Exception:
-        pass
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        logger.warning("Could not auto-create tables on startup: %s", str(exc))
     yield
-    await engine.dispose()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -99,10 +97,13 @@ async def health_check() -> dict:
     description="Calculate production quantity, schedule, utilization, and priority.",
     tags=["Production Planning"],
 )
-def create_production_plan_root(request: ProductionPlanRequest) -> ProductionPlanResponse:
+def create_production_plan_root(
+    request: ProductionPlanRequest,
+    db: Session = Depends(get_db)
+) -> ProductionPlanResponse:
     """Root endpoint for generating an optimized production plan."""
     service = ProductionPlannerService()
-    return service.generate_plan(request)
+    return service.generate_plan(request, db=db)
 
 
 # ---------------------------------------------------------------------------

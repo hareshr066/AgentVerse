@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.production_plan import ProductionPlan
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from app.schemas.production_request import ProductionPlanRequest
 from app.schemas.production_response import ProductionPlanResponse as CalculatorPlanResponse
@@ -31,15 +30,14 @@ class ProductionPlanResponse(BaseModel):
         from_attributes = True
 
 @router.get("/", response_model=List[ProductionPlanResponse])
-async def get_plans(db: AsyncSession = Depends(get_db)):
+def get_plans(db: Session = Depends(get_db)):
     try:
-        result = await db.execute(select(ProductionPlan))
-        plans = result.scalars().all()
-    except Exception:
+        plans = db.query(ProductionPlan).all()
+    except Exception as exc:
+        logger.error("Failed to query production plans: %s", str(exc))
         plans = []
     
     if not plans:
-        # Return fallback mock plans to prevent empty systems
         return [
             ProductionPlanResponse(
                 id=1,
@@ -58,16 +56,15 @@ async def get_plans(db: AsyncSession = Depends(get_db)):
         ]
     return plans
 
-@router.get("/{plan_id}", response_model=ProductionPlanResponse)
-async def get_plan_by_id(plan_id: int, db: AsyncSession = Depends(get_db)):
+@router.get("/{plan_id:int}", response_model=ProductionPlanResponse)
+def get_plan_by_id(plan_id: int, db: Session = Depends(get_db)):
     try:
-        result = await db.execute(select(ProductionPlan).where(ProductionPlan.id == plan_id))
-        plan = result.scalar_one_or_none()
-    except Exception:
+        plan = db.query(ProductionPlan).filter(ProductionPlan.id == plan_id).first()
+    except Exception as exc:
+        logger.error("Error retrieving production plan id=%d: %s", plan_id, str(exc))
         plan = None
         
     if not plan:
-        # Fallback if id == 1
         if plan_id == 1:
             return ProductionPlanResponse(
                 id=1,
@@ -80,17 +77,25 @@ async def get_plan_by_id(plan_id: int, db: AsyncSession = Depends(get_db)):
     return plan
 
 @router.post("/", response_model=ProductionPlanResponse, status_code=status.HTTP_201_CREATED)
-async def create_plan(plan: ProductionPlanCreate, db: AsyncSession = Depends(get_db)):
-    new_plan = ProductionPlan(
-        product_name=plan.product_name,
-        quantity=plan.quantity,
-        status=plan.status,
-        materials_needed=plan.materials_needed
-    )
-    db.add(new_plan)
-    await db.commit()
-    await db.refresh(new_plan)
-    return new_plan
+def create_plan(plan: ProductionPlanCreate, db: Session = Depends(get_db)):
+    try:
+        new_plan = ProductionPlan(
+            product_name=plan.product_name,
+            quantity=plan.quantity,
+            status=plan.status,
+            materials_needed=plan.materials_needed
+        )
+        db.add(new_plan)
+        db.commit()
+        db.refresh(new_plan)
+        return new_plan
+    except Exception as exc:
+        db.rollback()
+        logger.error("Failed to create production plan: %s", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection failure during creation"
+        ) from exc
 
 @router.post(
     "/production-plan",
@@ -104,20 +109,26 @@ async def create_plan(plan: ProductionPlanCreate, db: AsyncSession = Depends(get
     ),
     tags=["Production Planning"],
 )
-def create_production_plan(request: ProductionPlanRequest) -> CalculatorPlanResponse:
+def create_production_plan(
+    request: ProductionPlanRequest,
+    db: Session = Depends(get_db)
+) -> CalculatorPlanResponse:
     logger.info(
         "POST /production-plan — product='%s'", request.product
     )
 
     try:
         service = ProductionPlannerService()
-        plan = service.generate_plan(request)
+        plan = service.generate_plan(request, db=db)
         logger.info(
             "Production plan returned — qty=%d | priority=%s",
             plan.production_quantity,
             plan.priority,
         )
         return plan
+
+    except HTTPException:
+        raise
 
     except ProductionValidationError as exc:
         logger.warning("Validation error: %s", str(exc))

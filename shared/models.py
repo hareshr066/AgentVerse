@@ -1,7 +1,40 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from shared.database import Base
+
+class InventoryItem(Base):
+    __tablename__ = "inventory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_name = Column(String(255), nullable=False)
+    current_stock = Column(Integer, default=0)
+    average_daily_usage = Column(Float, default=0.0)
+    lead_time = Column(Integer, default=0)
+    safety_stock = Column(Float, default=0.0)
+    reorder_point = Column(Float, default=0.0)
+    eoq = Column(Float, default=0.0)
+    status = Column(String(50), default="IN_STOCK")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+class SupplierItem(Base):
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    supplier_name = Column(String(255), nullable=False)
+    material_name = Column(String(255), nullable=False)
+    available_quantity = Column(Float, default=0.0)
+    lead_time_days = Column(Integer, default=0)
+    price_per_unit = Column(Float, default=0.0)
+    delivery_delay_days = Column(Integer, default=0)
+    quality_score = Column(Float, default=0.0)
+    on_time_delivery_percentage = Column(Float, default=0.0)
+    risk_score = Column(Float, default=0.0)
+    risk_level = Column(String(50), default="LOW")
+    recommended = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 class EventPrediction(Base):
     __tablename__ = "event_predictions"

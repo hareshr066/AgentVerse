@@ -2,7 +2,7 @@
 Production Planning Agent - Response Schema
 
 Defines the structured output returned by the Production Planning Agent
-after computing quantity, schedule, capacity utilization, and priority.
+based on PostgreSQL inventory and suppliers database tables.
 """
 
 from pydantic import BaseModel, Field
@@ -14,7 +14,7 @@ class MachineSlot(BaseModel):
 
     machine: str = Field(
         ...,
-        description="Name or identifier of the machine (e.g. 'Machine A').",
+        description="Name or identifier of the machine.",
         examples=["Machine A"],
     )
     allocated: int = Field(
@@ -24,7 +24,7 @@ class MachineSlot(BaseModel):
     )
     machine_id: Optional[str] = Field(
         default=None,
-        description="Alias for machine identifier (e.g. 'M-1').",
+        description="Alias for machine identifier.",
         examples=["M-1"],
     )
     assigned_units: Optional[int] = Field(
@@ -52,80 +52,107 @@ class MachineSlot(BaseModel):
 class ProductionPlanResponse(BaseModel):
     """
     Full production plan returned by the Production Planning Agent.
-
-    Contains computed quantities, timeline, priority classification,
-    capacity metrics, machine schedules, and bottleneck analysis.
+    Includes all DB-driven metrics required by the spec.
     """
 
-    product: Optional[str] = Field(
-        default="Air Conditioner",
-        description="Product name from the request.",
+    product: str = Field(
+        ...,
+        description="Product Name from inventory table.",
         examples=["Air Conditioner"],
+    )
+    current_stock: int = Field(
+        ...,
+        description="Current Stock from inventory table.",
+        examples=[4200],
+    )
+    estimated_demand: int = Field(
+        ...,
+        description="Estimated Demand = average_daily_usage * lead_time.",
+        examples=[3000],
+    )
+    lead_time: int = Field(
+        ...,
+        description="Lead Time in days from inventory table.",
+        examples=[10],
+    )
+    safety_stock: int = Field(
+        ...,
+        description="Safety Stock level from inventory table.",
+        examples=[1000],
+    )
+    reorder_point: int = Field(
+        ...,
+        description="Reorder Point from inventory table.",
+        examples=[2000],
+    )
+    eoq: float = Field(
+        ...,
+        description="Economic Order Quantity from inventory table.",
+        examples=[1500.0],
     )
     production_quantity: int = Field(
         ...,
-        description="Total units that need to be produced (forecast_demand - current_inventory + safety_stock).",
+        description="Required Production = max(0, Estimated Demand + safety_stock - current_stock).",
         examples=[8800],
     )
-    production_days: Union[int, float] = Field(
+    recommended_batch: int = Field(
         ...,
-        description="Number of working days required to fulfill the production quantity.",
-        examples=[10],
-    )
-    capacity_utilization: str = Field(
-        ...,
-        description="Percentage of capacity being used, expressed as a formatted string.",
-        examples=["97%"],
+        description="Recommended Batch = max(Required Production, eoq).",
+        examples=[8800],
     )
     priority: str = Field(
         ...,
-        description="Production priority level: CRITICAL | HIGH | NORMAL.",
+        description="Production Priority: HIGH if current_stock <= reorder_point else NORMAL.",
         examples=["HIGH"],
+    )
+    inventory_status: str = Field(
+        ...,
+        description="Inventory Status from inventory table.",
+        examples=["LOW"],
+    )
+    supplier_name: Optional[str] = Field(
+        default="Unavailable",
+        description="Supplier Name from suppliers table.",
+        examples=["AC Acme Supplies"],
+    )
+    supplier_risk: Optional[str] = Field(
+        default="LOW",
+        description="Supplier Risk Level from suppliers table.",
+        examples=["LOW"],
+    )
+    supplier_delay: Union[int, bool] = Field(
+        default=0,
+        description="Delivery delay in days from suppliers table.",
+        examples=[4],
+    )
+    quality_score: Optional[float] = Field(
+        default=0.0,
+        description="Quality Score from suppliers table.",
+        examples=[95.0],
+    )
+    production_days: Union[int, float] = Field(
+        default=0,
+        description="Working days required for production run.",
+        examples=[10],
+    )
+    capacity_utilization: str = Field(
+        default="100%",
+        description="Capacity utilization string.",
+        examples=["97%"],
     )
     machine_schedule: List[MachineSlot] = Field(
         default_factory=list,
-        description="Per-machine production allocation schedule.",
+        description="Per-machine allocation schedule.",
     )
     bottlenecks: Optional[List[str]] = Field(
         default=None,
-        description="Detected production or supply chain bottlenecks.",
-        examples=[["Supplier delay active (4 days)"]],
+        description="Bottlenecks analysis.",
     )
     optimized_usage: Optional[str] = Field(
         default=None,
-        description="Machine usage optimization summary.",
-        examples=["Machine allocation balanced across 2 units operating at 97% capacity."],
+        description="Optimization summary.",
     )
     message: str = Field(
         default="Production plan generated successfully.",
         description="Status message.",
     )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "product": "Air Conditioner",
-                "production_quantity": 8800,
-                "production_days": 10,
-                "capacity_utilization": "97%",
-                "priority": "HIGH",
-                "machine_schedule": [
-                    {
-                        "machine": "Machine A",
-                        "allocated": 500,
-                        "machine_id": "Machine A",
-                        "assigned_units": 500,
-                    },
-                    {
-                        "machine": "Machine B",
-                        "allocated": 400,
-                        "machine_id": "Machine B",
-                        "assigned_units": 400,
-                    },
-                ],
-                "bottlenecks": ["Supplier delay active (4 days)"],
-                "optimized_usage": "Machine allocation optimized across 2 machines.",
-                "message": "Production plan generated successfully.",
-            }
-        }
-    }

@@ -6,12 +6,14 @@ versioned API router, and exposes the top-level health and domain
 endpoints required by the spec (GET /, GET /health, POST /recommend).
 """
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
 from app.api.v1.router import api_router
 from app.api.v1.endpoints import recommendation
 from app.core.config import settings
+from app.core.database import get_db
 from app.core.logging import logger
 from app.schemas.recommendation_request import RecommendationRequest
 from app.schemas.recommendation_response import RecommendationResponse
@@ -88,10 +90,13 @@ async def health_check() -> dict:
     description="Accepts demand, inventory, supply chain, and production planning outputs and returns actionable business recommendations.",
     tags=["Recommendations"],
 )
-async def recommend_root(request: RecommendationRequest) -> RecommendationResponse:
+async def recommend_root(
+    request: RecommendationRequest,
+    db: Session = Depends(get_db)
+) -> RecommendationResponse:
     """Root endpoint for generating executive recommendations."""
     service = RecommendationService()
-    return await service.recommend(request)
+    return await service.recommend(request, db=db)
 
 
 # ---------------------------------------------------------------------------

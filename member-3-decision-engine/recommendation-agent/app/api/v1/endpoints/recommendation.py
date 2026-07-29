@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from typing import Dict, Any
+from sqlalchemy.orm import Session
+from app.core.database import get_db
 
 from app.schemas.recommendation_request import RecommendationRequest
 from app.schemas.recommendation_response import RecommendationResponse
@@ -31,7 +33,10 @@ async def analyze_recommendations(request: Dict[str, Any]):
     ),
     tags=["Recommendations"],
 )
-async def get_recommendation(request: RecommendationRequest) -> RecommendationResponse:
+async def get_recommendation(
+    request: RecommendationRequest,
+    db: Session = Depends(get_db)
+) -> RecommendationResponse:
     logger.info(
         "POST /recommend — product='%s' | question='%s'",
         request.demand.product,
@@ -40,13 +45,16 @@ async def get_recommendation(request: RecommendationRequest) -> RecommendationRe
 
     try:
         service = RecommendationService()
-        recommendation = await service.recommend(request)
+        recommendation = await service.recommend(request, db=db)
         logger.info(
             "Recommendation returned — risk=%s | ai_enhanced=%s",
             recommendation.risk,
             recommendation.ai_enhanced,
         )
         return recommendation
+
+    except HTTPException:
+        raise
 
     except RecommendationValidationError as exc:
         logger.warning("Validation error: %s", str(exc))

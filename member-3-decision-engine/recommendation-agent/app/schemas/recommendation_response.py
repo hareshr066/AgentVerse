@@ -10,49 +10,52 @@ from typing import Optional, List
 
 class RecommendationResponse(BaseModel):
     """
-    Structured AI Manufacturing Consultant Report Response.
+    Structured AI Manufacturing Consultant Report Response based on PostgreSQL inventory and suppliers tables.
     """
 
     executive_summary: str = Field(
         ...,
-        description="High-level executive summary.",
-        examples=["Demand is expected to increase significantly."],
+        description="High-level executive summary based on live database values.",
+        examples=["Demand exceeds current inventory. Immediate production recommended."],
     )
     current_situation: Optional[str] = Field(
-        default="Demand (12,000 units) exceeds current inventory (4,000 units) by 8,000 units. Active supplier delay of 4 days.",
-        description="Situation Analysis based on full manufacturing context.",
-    )
-    production_analysis: Optional[str] = Field(
-        default="Production requires 9,000 units over 10 working days at 97% capacity utilization.",
-        description="Production Analysis.",
+        default=None,
+        description="Situation Analysis based on inventory and supplier state.",
     )
     inventory_analysis: Optional[str] = Field(
-        default="Current inventory is below required safety stock buffer.",
-        description="Inventory Analysis.",
+        default=None,
+        description="Inventory Analysis detailing stock, reorder point, and safety stock.",
+    )
+    demand_analysis: Optional[str] = Field(
+        default=None,
+        description="Demand Analysis derived from average daily usage and lead time.",
+    )
+    production_analysis: Optional[str] = Field(
+        default=None,
+        description="Production Analysis detailing required output and scheduling.",
     )
     supply_chain_analysis: Optional[str] = Field(
-        default="Active 4-day supplier delay creates a potential material availability bottleneck.",
-        description="Supply Chain Analysis.",
+        default=None,
+        description="Supplier Analysis detailing risk score, delay days, and quality score.",
     )
     recommended_actions: List[str] = Field(
         default_factory=list,
         description="Ordered list of recommended executive actions.",
-        examples=[["Increase production by 20%.", "Increase safety stock.", "Use alternate supplier."]],
     )
     production: str = Field(
-        default="Increase production by 20%.",
-        description="Production recommendation shorthand.",
+        ...,
+        description="Production recommendation decision.",
     )
-    inventory: str = Field(
-        default="Increase safety stock.",
-        description="Inventory recommendation shorthand.",
+    inventory: Optional[str] = Field(
+        default="Maintain current safety stock levels.",
+        description="Inventory recommendation decision.",
     )
     supplier: str = Field(
-        default="Use alternate supplier.",
-        description="Supplier recommendation shorthand.",
+        ...,
+        description="Supplier recommendation decision.",
     )
     business_impact: str = Field(
-        default="High business impact: Mitigates potential revenue loss on 8,000 units.",
+        ...,
         description="Business impact summary.",
     )
     risk: str = Field(
@@ -61,7 +64,7 @@ class RecommendationResponse(BaseModel):
         examples=["High"],
     )
     priority: str = Field(
-        default="High",
+        ...,
         description="Priority Level: Normal | High | Critical.",
         examples=["High"],
     )
@@ -82,28 +85,3 @@ class RecommendationResponse(BaseModel):
         default=False,
         description="Indicates whether LLM AI was activated.",
     )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "executive_summary": "Demand is expected to increase significantly.",
-                "current_situation": "Demand (12,000 units) exceeds inventory (4,000 units) by 8,000 units.",
-                "production_analysis": "Production run of 9,000 units required over 10 days at 97% utilization.",
-                "inventory_analysis": "Inventory is below safety stock.",
-                "supply_chain_analysis": "Active 4-day supplier delay.",
-                "recommended_actions": [
-                    "Increase production by 20%.",
-                    "Increase safety stock.",
-                    "Use alternate supplier."
-                ],
-                "production": "Increase production by 20%.",
-                "inventory": "Increase safety stock.",
-                "supplier": "Use alternate supplier.",
-                "business_impact": "High business impact: Mitigates revenue loss.",
-                "risk": "High",
-                "priority": "High",
-                "confidence": "96%",
-                "ai_enhanced": False,
-            }
-        }
-    }

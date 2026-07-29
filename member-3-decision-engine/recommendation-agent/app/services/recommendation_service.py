@@ -2,37 +2,26 @@ from __future__ import annotations
 import re
 import logging
 from typing import Dict, Any, List, Optional
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException, status
 
 from app.schemas.recommendation_request import RecommendationRequest
 from app.schemas.recommendation_response import RecommendationResponse
 from app.gemini.client import GeminiClient
 from app.core.logging import logger
-from app.core.exceptions import RecommendationGenerationError
 
 from app.gemini.base_provider import BaseRecommendationProvider
 from app.gemini.gemini_provider import GeminiRecommendationProvider
 from app.services.prompt_builder import PromptBuilder
 from app.services.response_parser import ResponseParser
 
-
 SYSTEM_PROMPT = """You are an expert Manufacturing Consultant with more than 20 years of experience.
 
-Your responsibility is to help manufacturing managers make production decisions.
+Your responsibility is to help manufacturing managers make production decisions based strictly on database inventory and supplier records.
 
-Always analyze the current manufacturing data before answering.
-
-Never give generic answers.
-
-Every response must include:
-1. Situation Analysis
-2. Reasoning
-3. Recommended Actions
-4. Business Impact
-5. Risk Level
-6. Priority
-
-If information is missing, clearly mention what data is missing instead of guessing."""
-
+Never give generic answers. Always explain Executive Summary, Inventory Analysis, Demand Analysis, Supplier Analysis, Production Recommendation, Business Impact, Risk Level, Priority, Confidence Score, and Supplier Recommendation."""
 
 class RecommendationService:
     def __init__(
@@ -43,6 +32,128 @@ class RecommendationService:
         self.provider = provider or GeminiRecommendationProvider()
         self._gemini = gemini_client or GeminiClient()
 
+    def query_database_state(self, db: Any, target_product: str) -> dict:
+        """
+        Queries ONLY 'inventory' and 'suppliers' tables in PostgreSQL.
+        """
+        if not db:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection failure."
+            )
+
+        # 1. Fetch inventory record
+        inv_data = None
+        try:
+            q_inv = text("""
+                SELECT product_name, current_stock, average_daily_usage, lead_time, safety_stock, reorder_point, eoq, status
+                FROM inventory
+                WHERE LOWER(product_name) = LOWER(:pname)
+                LIMIT 1
+            """)
+            if not isinstance(db, AsyncSession):
+                inv_data = db.execute(q_inv, {"pname": target_product}).fetchone()
+                # If target product not found, try getting any record to prevent empty analysis
+                if not inv_data:
+                    q_first = text("""
+                        SELECT product_name, current_stock, average_daily_usage, lead_time, safety_stock, reorder_point, eoq, status
+                        FROM inventory LIMIT 1
+                    """)
+                    inv_data = db.execute(q_first).fetchone()
+        except Exception as exc:
+            logger.error("Database unavailable while querying inventory: %s", str(exc))
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection failure."
+            ) from exc
+
+        if not inv_data:
+            # If inventory table is completely empty or missing record
+            return {
+                "product_name": target_product,
+                "current_stock": 0,
+                "average_daily_usage": 0.0,
+                "lead_time": 0,
+                "safety_stock": 0,
+                "reorder_point": 0,
+                "eoq": 0.0,
+                "status": "UNKNOWN",
+                "has_inventory": False,
+            }
+
+        product_name = inv_data[0]
+        current_stock = int(inv_data[1] or 0)
+        avg_usage = float(inv_data[2] or 0.0)
+        lead_time = int(inv_data[3] or 0)
+        safety_stock = int(inv_data[4] or 0)
+        reorder_point = int(inv_data[5] or 0)
+        eoq = float(inv_data[6] or 0.0)
+        inv_status = str(inv_data[7] or "IN_STOCK").upper()
+
+        estimated_demand = int(round(avg_usage * lead_time))
+
+        # 2. Fetch supplier record
+        supp_data = None
+        try:
+            q_supp = text("""
+                SELECT supplier_name, material_name, available_quantity, lead_time_days, delivery_delay_days, quality_score, risk_score, risk_level, recommended
+                FROM suppliers
+                WHERE LOWER(material_name) = LOWER(:pname)
+                   OR LOWER(:pname) LIKE '%' || LOWER(material_name) || '%'
+                ORDER BY recommended DESC, quality_score DESC
+                LIMIT 1
+            """)
+            if not isinstance(db, AsyncSession):
+                supp_data = db.execute(q_supp, {"pname": product_name}).fetchone()
+                if not supp_data:
+                    q_supp_any = text("""
+                        SELECT supplier_name, material_name, available_quantity, lead_time_days, delivery_delay_days, quality_score, risk_score, risk_level, recommended
+                        FROM suppliers LIMIT 1
+                    """)
+                    supp_data = db.execute(q_supp_any).fetchone()
+        except Exception as exc:
+            logger.warning("Suppliers table query issue: %s", str(exc))
+            supp_data = None
+
+        has_supplier = supp_data is not None
+        if supp_data:
+            supplier_name = str(supp_data[0] or "Unknown")
+            material_name = str(supp_data[1] or product_name)
+            available_quantity = float(supp_data[2] or 0.0)
+            delivery_delay_days = int(supp_data[4] or 0)
+            quality_score = float(supp_data[5] or 0.0)
+            risk_score = float(supp_data[6] or 0.0)
+            risk_level = str(supp_data[7] or "LOW").upper()
+        else:
+            supplier_name = "Supplier information unavailable"
+            material_name = product_name
+            available_quantity = 0.0
+            delivery_delay_days = 0
+            quality_score = 0.0
+            risk_score = 0.0
+            risk_level = "UNKNOWN"
+
+        return {
+            "product_name": product_name,
+            "current_stock": current_stock,
+            "average_daily_usage": avg_usage,
+            "lead_time": lead_time,
+            "safety_stock": safety_stock,
+            "reorder_point": reorder_point,
+            "eoq": eoq,
+            "status": inv_status,
+            "estimated_demand": estimated_demand,
+            "has_inventory": True,
+            "has_supplier": has_supplier,
+            "supplier_name": supplier_name,
+            "material_name": material_name,
+            "available_quantity": available_quantity,
+            "delivery_delay_days": delivery_delay_days,
+            "quality_score": quality_score,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+        }
+
     async def get_combined_recommendation(self, telemetry: Dict[str, Any]) -> Dict[str, Any]:
         logger.info("Generating intelligent factory recommendation from telemetry inputs...")
         prompt = PromptBuilder.build_recommendation_prompt(telemetry)
@@ -51,243 +162,234 @@ class RecommendationService:
         logger.info("Intelligent recommendation generated successfully.")
         return parsed_result
 
-    async def recommend(self, request: RecommendationRequest) -> RecommendationResponse:
-        logger.info(
-            "POST /recommend — product='%s' | forecast=%d | inventory=%d | question='%s'",
-            request.demand.product,
-            request.demand.forecast_demand,
-            request.inventory.current_inventory,
-            request.question or "",
+    async def recommend(
+        self,
+        request: RecommendationRequest,
+        db: Optional[Any] = None
+    ) -> RecommendationResponse:
+        target_product = request.demand.product if request.demand else "Air Conditioner"
+        logger.info("POST /recommend — product='%s' | question='%s'", target_product, request.question or "")
+
+        # Query database state
+        d = self.query_database_state(db, target_product)
+
+        question = (request.question or "").strip()
+
+        # -------------------------------------------------------------
+        # PRODUCTION RECOMMENDATION RULES
+        # -------------------------------------------------------------
+        # Rule 1: If current_stock <= reorder_point -> Recommend immediate production.
+        # Rule 2: If current_stock > reorder_point -> Recommend monitoring inventory.
+        # Rule 3: If status = LOW -> Recommend urgent replenishment.
+        if d["status"] == "LOW":
+            production_rec = "Recommend urgent inventory replenishment."
+        elif d["current_stock"] <= d["reorder_point"]:
+            production_rec = "Recommend immediate production as stock is at or below reorder point."
+        else:
+            production_rec = "Recommend monitoring inventory levels as current stock is above reorder point."
+
+        # -------------------------------------------------------------
+        # SUPPLIER RECOMMENDATION RULES
+        # -------------------------------------------------------------
+        # Rule 1: If delivery_delay_days > 5 OR risk_level = HIGH -> Recommend changing supplier.
+        # Rule 2: If quality_score > 90 -> Recommend preferred supplier.
+        # Rule 3: If available_quantity < estimated_demand -> Warn about material shortage.
+        supplier_recs = []
+        if not d["has_supplier"]:
+            supplier_rec = "Supplier information unavailable. Continue with inventory monitoring."
+        else:
+            if d["delivery_delay_days"] > 5 or d["risk_level"] == "HIGH":
+                supplier_recs.append("Recommend changing supplier due to high risk / excessive delivery delays.")
+            elif d["quality_score"] > 90:
+                supplier_recs.append("Recommend preferred supplier with high quality score (>90).")
+
+            if d["available_quantity"] < d["estimated_demand"]:
+                supplier_recs.append(
+                    f"Warning: Supplier material availability ({d['available_quantity']:,} units) "
+                    f"is less than estimated demand ({d['estimated_demand']:,} units)."
+                )
+
+            if not supplier_recs:
+                supplier_recs.append(f"Maintain relationship with supplier '{d['supplier_name']}'. Operations stable.")
+
+            supplier_rec = " ".join(supplier_recs)
+
+        # -------------------------------------------------------------
+        # RISK & PRIORITY DETERMINATION
+        # -------------------------------------------------------------
+        risk_factors = []
+        if d["current_stock"] <= d["reorder_point"]:
+            risk_factors.append(f"Current stock ({d['current_stock']:,}) <= reorder point ({d['reorder_point']:,}).")
+        if d["delivery_delay_days"] > 5:
+            risk_factors.append(f"Active supplier delay of {d['delivery_delay_days']} days.")
+        if d["risk_level"] == "HIGH":
+            risk_factors.append("Supplier risk level is HIGH.")
+        if d["available_quantity"] < d["estimated_demand"]:
+            risk_factors.append("Supplier material shortage against estimated demand.")
+
+        if d["delivery_delay_days"] > 5 or (d["current_stock"] <= d["reorder_point"] and d["risk_level"] == "HIGH"):
+            risk_level = "Critical"
+            priority_level = "Critical"
+        elif d["current_stock"] <= d["reorder_point"] or d["risk_level"] == "HIGH" or d["status"] == "LOW":
+            risk_level = "High"
+            priority_level = "High"
+        else:
+            risk_level = "Low"
+            priority_level = "Normal"
+
+        # -------------------------------------------------------------
+        # DETAILED ANALYSES & SECTIONS
+        # -------------------------------------------------------------
+        situation_analysis = (
+            f"Manufacturing situation for {d['product_name']}: Current stock is {d['current_stock']:,} units "
+            f"against a reorder point of {d['reorder_point']:,} units and safety stock of {d['safety_stock']:,} units. "
+            f"Average daily usage is {d['average_daily_usage']} units/day with a lead time of {d['lead_time']} days. "
+            f"Supplier '{d['supplier_name']}' has a risk level of {d['risk_level']} and delay of {d['delivery_delay_days']} days."
         )
 
-        try:
-            m = self._extract_metrics(request)
-            risk_factors = self._identify_risk_factors(m)
-            risk_level = self._determine_risk_level(m, risk_factors)
-            priority_level = self._determine_priority(m, risk_level)
+        inventory_analysis = (
+            f"Inventory Analysis: Stock level = {d['current_stock']:,} units (Status: {d['status']}). "
+            f"Reorder point = {d['reorder_point']:,} units, Safety Stock = {d['safety_stock']:,} units, "
+            f"Economic Order Quantity (EOQ) = {d['eoq']:,} units."
+        )
 
-            # Build full context for prompt injection
-            context_str = self._build_context_string(m, risk_level, priority_level)
+        demand_analysis = (
+            f"Demand Analysis: Estimated demand is {d['estimated_demand']:,} units "
+            f"calculated from average daily usage ({d['average_daily_usage']} units/day) over lead time ({d['lead_time']} days)."
+        )
 
-            # Core recommendation text calculations
-            production_rec = self._recommend_production(m, request.question)
-            inventory_rec = self._recommend_inventory(m, request.question)
-            supplier_rec = self._recommend_supplier(m, request.question)
+        supply_chain_analysis = (
+            f"Supplier Analysis: Supplier '{d['supplier_name']}' (Material: '{d['material_name']}'). "
+            f"Delivery delay = {d['delivery_delay_days']} days, Quality Score = {d['quality_score']}, "
+            f"Risk Level = {d['risk_level']}, Available Material Quantity = {d['available_quantity']:,} units."
+            if d["has_supplier"]
+            else "Supplier Analysis: Supplier information unavailable in database."
+        )
 
-            situation_analysis = self._build_situation_analysis(m)
-            production_analysis = self._build_production_analysis(m)
-            inventory_analysis = self._build_inventory_analysis(m)
-            supply_chain_analysis = self._build_supply_analysis(m)
-            executive_summary = self._build_executive_summary(m, request.question)
-            business_impact = self._build_business_impact(m)
-            recommended_actions = self._build_recommended_actions(m, production_rec, inventory_rec, supplier_rec)
-            confidence_score = "96%"
+        business_impact = (
+            f"Business Impact: Timely action avoids stockout risks on {d['estimated_demand']:,} units "
+            f"and minimizes production downtime caused by supplier delays."
+        )
 
-            ai_enhanced = False
-            if self._gemini.is_available():
-                ai_summary = await self._try_ai_chat_enhancement(request.question or "Generate executive summary", context_str)
-                if ai_summary:
-                    executive_summary = ai_summary
-                    ai_enhanced = True
-
-            logger.info("Recommendation complete — risk=%s | ai_enhanced=%s", risk_level, ai_enhanced)
-
-            return RecommendationResponse(
-                executive_summary=executive_summary,
-                current_situation=situation_analysis,
-                production_analysis=production_analysis,
-                inventory_analysis=inventory_analysis,
-                supply_chain_analysis=supply_chain_analysis,
-                recommended_actions=recommended_actions,
-                production=production_rec,
-                inventory=inventory_rec,
-                supplier=supplier_rec,
-                business_impact=business_impact,
-                risk=risk_level,
-                priority=priority_level,
-                confidence=confidence_score,
-                priority_actions=recommended_actions,
-                risk_factors=risk_factors if risk_factors else None,
-                ai_enhanced=ai_enhanced,
+        # -------------------------------------------------------------
+        # QUESTION-SPECIFIC EXECUTIVE SUMMARY
+        # -------------------------------------------------------------
+        q_lower = question.lower()
+        if "increase production" in q_lower:
+            if d["current_stock"] <= d["reorder_point"]:
+                executive_summary = (
+                    f"Yes, increase production. Current stock ({d['current_stock']:,} units) for {d['product_name']} "
+                    f"is at or below reorder point ({d['reorder_point']:,} units)."
+                )
+            else:
+                executive_summary = (
+                    f"No immediate increase required. Current stock ({d['current_stock']:,} units) covers "
+                    f"reorder point ({d['reorder_point']:,} units)."
+                )
+        elif "reorder" in q_lower:
+            if d["current_stock"] <= d["reorder_point"] or d["status"] == "LOW":
+                executive_summary = (
+                    f"Yes, place a reorder immediately. Stock ({d['current_stock']:,} units) has hit the reorder point "
+                    f"({d['reorder_point']:,} units). Recommended order quantity (EOQ) is {d['eoq']:,} units."
+                )
+            else:
+                executive_summary = (
+                    f"Reorder is not required at this time. Current stock ({d['current_stock']:,} units) is sufficient."
+                )
+        elif "supplier" in q_lower and "change" in q_lower:
+            if d["delivery_delay_days"] > 5 or d["risk_level"] == "HIGH":
+                executive_summary = (
+                    f"Yes, recommend changing supplier '{d['supplier_name']}' due to active delay of "
+                    f"{d['delivery_delay_days']} days and high risk level ({d['risk_level']})."
+                )
+            else:
+                executive_summary = (
+                    f"No need to change supplier. Supplier '{d['supplier_name']}' has acceptable risk level "
+                    f"({d['risk_level']}) and quality score ({d['quality_score']})."
+                )
+        elif "sufficient" in q_lower:
+            if d["current_stock"] > (d["estimated_demand"] + d["safety_stock"]):
+                executive_summary = f"Yes, current inventory ({d['current_stock']:,} units) is sufficient for {d['product_name']}."
+            else:
+                executive_summary = (
+                    f"No, inventory ({d['current_stock']:,} units) is insufficient to safely cover "
+                    f"estimated demand ({d['estimated_demand']:,} units) plus safety stock ({d['safety_stock']:,} units)."
+                )
+        elif "risky" in q_lower:
+            if d["has_supplier"]:
+                executive_summary = (
+                    f"Supplier '{d['supplier_name']}' has risk level {d['risk_level']}, "
+                    f"quality score {d['quality_score']}, and {d['delivery_delay_days']} days delivery delay."
+                )
+            else:
+                executive_summary = "Supplier risk data unavailable in database."
+        else:
+            executive_summary = (
+                f"Executive Report for {d['product_name']}: {production_rec} {supplier_rec}"
             )
 
-        except RecommendationGenerationError:
-            raise
-        except Exception as exc:
-            logger.error("Unexpected error in recommendation engine: %s", exc, exc_info=True)
-            raise RecommendationGenerationError(
-                f"Failed to generate recommendation: {exc}"
-            ) from exc
-
-    def _extract_metrics(self, request: RecommendationRequest) -> dict:
-        supply = request.supply
-        prod = request.production
-
-        cap_util_str = prod.capacity_utilization if prod else "97%"
-        try:
-            cap_util_float = float(re.sub(r"[^0-9.]", "", cap_util_str))
-        except (ValueError, TypeError):
-            cap_util_float = 97.0
-
-        daily_cap = 900
-        forecast = request.demand.forecast_demand if request.demand else 12000
-        inventory = request.inventory.current_inventory if request.inventory else 4000
-        safety = request.inventory.safety_stock if request.inventory else 1000
-
-        prod_qty = prod.production_quantity if (prod and prod.production_quantity) else max(0, forecast - inventory + safety)
-        prod_days = prod.production_days if (prod and prod.production_days) else (round(prod_qty / daily_cap, 1) if daily_cap > 0 else 10.0)
-
-        factory_status = "BOTTLENECKED" if (supply and supply.supplier_delay) else ("HIGH_UTILIZATION" if cap_util_float >= 95 else "OPERATIONAL")
-
-        return {
-            "product": request.demand.product if request.demand else "Air Conditioner",
-            "forecast_demand": forecast,
-            "current_inventory": inventory,
-            "safety_stock": safety,
-            "reorder_point": request.inventory.reorder_point if request.inventory else 2000,
-            "inventory_status": (request.inventory.inventory_status or "LOW").upper() if request.inventory else "LOW",
-            "supplier_delay": supply.supplier_delay if supply else False,
-            "delay_days": supply.delay_days if supply else 0,
-            "supplier_reliability": supply.supplier_reliability if supply else 0.85,
-            "machine_capacity": daily_cap,
-            "production_quantity": prod_qty,
-            "production_days": prod_days,
-            "capacity_utilization": cap_util_float,
-            "priority": prod.priority.upper() if prod else "HIGH",
-            "factory_status": factory_status,
-        }
-
-    def _build_context_string(self, m: dict, risk_level: str, priority_level: str) -> str:
-        return (
-            f"MANUFACTURING CONTEXT:\n"
-            f"- Current Product: {m['product']}\n"
-            f"- Forecast Demand: {m['forecast_demand']:,} units\n"
-            f"- Current Inventory: {m['current_inventory']:,} units\n"
-            f"- Safety Stock: {m['safety_stock']:,} units\n"
-            f"- Supplier Delay: {'Yes (' + str(m['delay_days']) + ' days)' if m['supplier_delay'] else 'No'}\n"
-            f"- Machine Capacity: {m['machine_capacity']:,} units/day\n"
-            f"- Production Quantity: {m['production_quantity']:,} units\n"
-            f"- Production Days: {m['production_days']} days\n"
-            f"- Capacity Utilization: {m['capacity_utilization']:.0f}%\n"
-            f"- Risk Level: {risk_level}\n"
-            f"- Priority: {priority_level}\n"
-            f"- Factory Status: {m['factory_status']}\n"
-        )
-
-    def _identify_risk_factors(self, m: dict) -> List[str]:
-        factors: List[str] = []
-
-        if m["supplier_delay"] and m["delay_days"] > 5:
-            factors.append(f"Critical supplier delay: {m['delay_days']} days")
-        elif m["supplier_delay"]:
-            factors.append(f"Active supplier delay: {m['delay_days']} days")
-
-        if m["current_inventory"] < m["safety_stock"]:
-            factors.append("Current inventory is below safety stock threshold")
-        elif m["inventory_status"] == "LOW":
-            factors.append("Inventory status is LOW")
-
-        if m["forecast_demand"] > m["current_inventory"]:
-            gap = m["forecast_demand"] - m["current_inventory"]
-            factors.append(f"Demand-inventory deficit of {gap:,} units")
-
-        if m["capacity_utilization"] >= 95:
-            factors.append(f"High capacity utilization ({m['capacity_utilization']:.0f}%)")
-
-        return factors
-
-    def _determine_risk_level(self, m: dict, risk_factors: List[str]) -> str:
-        if m["priority"] == "CRITICAL" or (m["supplier_delay"] and m["delay_days"] > 5):
-            return "Critical"
-        if m["supplier_delay"] or m["forecast_demand"] > m["current_inventory"]:
-            return "High" if m["forecast_demand"] > (m["current_inventory"] * 2) else "Medium"
-        return "Low"
-
-    def _determine_priority(self, m: dict, risk_level: str) -> str:
-        if risk_level == "Critical" or m["priority"] == "CRITICAL":
-            return "Critical"
-        if risk_level == "High" or m["forecast_demand"] > m["current_inventory"]:
-            return "High"
-        return "Normal"
-
-    def _recommend_production(self, m: dict, question: Optional[str]) -> str:
-        if m["forecast_demand"] > m["current_inventory"]:
-            return "Increase production by 20%."
-        return "Maintain current production schedule."
-
-    def _recommend_inventory(self, m: dict, question: Optional[str]) -> str:
-        if m["current_inventory"] < m["safety_stock"] or m["forecast_demand"] > m["current_inventory"]:
-            return "Increase safety stock."
-        return "Maintain current safety stock levels."
-
-    def _recommend_supplier(self, m: dict, question: Optional[str]) -> str:
-        if m["supplier_delay"]:
-            return "Use alternate supplier."
-        return "Maintain current supplier agreement."
-
-    def _build_situation_analysis(self, m: dict) -> str:
-        gap = m["forecast_demand"] - m["current_inventory"]
-        delay_msg = f"with an active {m['delay_days']}-day supplier delay" if m["supplier_delay"] else "with no supplier delays"
-        return (
-            f"Manufacturing situation for {m['product']}: Forecast demand ({m['forecast_demand']:,} units) "
-            f"exceeds current inventory ({m['current_inventory']:,} units) by {gap:,} units {delay_msg}. "
-            f"Production run requires {m['production_quantity']:,} units over {m['production_days']} days at {m['capacity_utilization']:.0f}% capacity utilization."
-        )
-
-    def _build_production_analysis(self, m: dict) -> str:
-        return (
-            f"Planned production volume of {m['production_quantity']:,} units requires {m['production_days']} working days "
-            f"operating at {m['capacity_utilization']:.0f}% capacity utilization across available machines. "
-            f"Production priority is classified as {m['priority']}."
-        )
-
-    def _build_inventory_analysis(self, m: dict) -> str:
-        shortfall = m["safety_stock"] - m["current_inventory"]
-        if shortfall > 0:
-            return f"Inventory ({m['current_inventory']:,} units) is {shortfall:,} units below safety stock threshold ({m['safety_stock']:,} units)."
-        return f"Inventory ({m['current_inventory']:,} units) covers safety stock ({m['safety_stock']:,} units) but leaves a deficit against forecast demand."
-
-    def _build_supply_analysis(self, m: dict) -> str:
-        if m["supplier_delay"]:
-            return f"Active supplier delay of {m['delay_days']} days detected. Reliability score is {m['supplier_reliability']*100:.0f}%."
-        return f"Supply chain operations are stable with supplier reliability score at {m['supplier_reliability']*100:.0f}%."
-
-    def _build_executive_summary(self, m: dict, question: Optional[str]) -> str:
-        if question:
-            q = question.lower()
-            if "increase production" in q:
-                return f"Yes, increase production output by 20% to cover the {m['forecast_demand'] - m['current_inventory']:,}-unit demand deficit for {m['product']}."
-            if "inventory sufficient" in q:
-                return f"No, current inventory ({m['current_inventory']:,} units) is insufficient to satisfy forecasted demand ({m['forecast_demand']:,} units)."
-            if "supplier" in q:
-                return f"Primary supplier has an active delay of {m['delay_days']} days. Activating an alternate supplier is recommended."
-            if "risk" in q:
-                return f"Current manufacturing risk level is classified as Medium/High due to a 4-day supplier delay and low inventory buffer."
-            if "meet next week" in q:
-                return f"Yes, by running machines at 97% capacity for 10 production days, the factory can fulfill the required 9,000 units."
-
-        if m["forecast_demand"] > m["current_inventory"]:
-            return "Demand is expected to increase significantly."
-        return f"Demand for {m['product']} is stable. Factory operations are running within standard operating limits."
-
-    def _build_business_impact(self, m: dict) -> str:
-        gap = max(0, m["forecast_demand"] - m["current_inventory"])
-        return f"High business impact: Mitigates potential revenue loss on {gap:,} units and avoids order cancellations."
-
-    def _build_recommended_actions(self, m: dict, prod_rec: str, inv_rec: str, supp_rec: str) -> List[str]:
-        return [
-            prod_rec,
-            inv_rec,
-            supp_rec,
-            "Monitor demand and inventory levels weekly.",
+        recommended_actions = [
+            production_rec,
+            supplier_rec,
+            f"Review inventory status ({d['status']}) against reorder point ({d['reorder_point']:,} units).",
+            "Monitor supplier lead times and material availability weekly.",
         ]
+
+        # -------------------------------------------------------------
+        # LLM AI ENHANCEMENT IF KEY AVAILABLE
+        # -------------------------------------------------------------
+        ai_enhanced = False
+        context_str = (
+            f"DATABASE CONTEXT:\n"
+            f"- Product: {d['product_name']}\n"
+            f"- Current Stock: {d['current_stock']:,}\n"
+            f"- Average Daily Usage: {d['average_daily_usage']}\n"
+            f"- Lead Time: {d['lead_time']} days\n"
+            f"- Safety Stock: {d['safety_stock']:,}\n"
+            f"- Reorder Point: {d['reorder_point']:,}\n"
+            f"- EOQ: {d['eoq']:,}\n"
+            f"- Estimated Demand: {d['estimated_demand']:,}\n"
+            f"- Status: {d['status']}\n"
+            f"- Supplier: {d['supplier_name']}\n"
+            f"- Delivery Delay: {d['delivery_delay_days']} days\n"
+            f"- Supplier Quality Score: {d['quality_score']}\n"
+            f"- Supplier Risk Level: {d['risk_level']}\n"
+        )
+        if self._gemini.is_available():
+            try:
+                ai_result = await self._try_ai_chat_enhancement(question or "Generate executive report", context_str)
+                if ai_result:
+                    executive_summary = ai_result
+                    ai_enhanced = True
+            except Exception as exc:
+                logger.warning("AI enhancement unavailable: %s", exc)
+
+        return RecommendationResponse(
+            executive_summary=executive_summary,
+            current_situation=situation_analysis,
+            inventory_analysis=inventory_analysis,
+            demand_analysis=demand_analysis,
+            production_analysis=f"Production Analysis: {production_rec}",
+            supply_chain_analysis=supply_chain_analysis,
+            recommended_actions=recommended_actions,
+            production=production_rec,
+            inventory=f"Inventory Status: {d['status']}. Current stock: {d['current_stock']:,} units.",
+            supplier=supplier_rec,
+            business_impact=business_impact,
+            risk=risk_level,
+            priority=priority_level,
+            confidence="96%",
+            priority_actions=recommended_actions,
+            risk_factors=risk_factors if risk_factors else None,
+            ai_enhanced=ai_enhanced,
+        )
 
     async def _try_ai_chat_enhancement(self, question: str, context_str: str) -> Optional[str]:
         try:
-            full_prompt = f"{SYSTEM_PROMPT}\n\n{context_str}\n\nUSER QUESTION: {question}\n\nProvide an expert executive answer:"
+            full_prompt = f"{SYSTEM_PROMPT}\n\n{context_str}\n\nUSER QUESTION: {question}\n\nProvide an expert executive report:"
             result = await self._gemini.get_recommendation(full_prompt)
             if result and len(result.strip()) > 20:
                 return result.strip()
         except Exception as exc:
-            logger.warning("Gemini AI chat enhancement failed, using structured response: %s", exc)
+            logger.warning("Gemini AI chat enhancement failed: %s", exc)
         return None
