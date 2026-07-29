@@ -16,6 +16,15 @@ async def lifespan(app: FastAPI):
         from app.models import Supplier
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables initialized successfully.")
+        
+        # Sync live data from Neon PostgreSQL over HTTPS (Port 443)
+        try:
+            from app.neon_sync import sync_neon_to_engine
+            sync_neon_to_engine(engine, "supply")
+            logger.info("Neon PostgreSQL supplier data synced successfully.")
+        except Exception as se:
+            logger.warning("Neon sync warning: %s", str(se))
+            
     except Exception as e:
         logger.error("Failed to initialize database tables: %s", str(e), exc_info=True)
     yield
@@ -41,7 +50,8 @@ app.include_router(supplier_crud_router)
 def read_root():
     return {
         "service": settings.APP_NAME,
-        "status": "running"
+        "status": "running",
+        "database": "Neon PostgreSQL (Synced)"
     }
 
 @app.get("/health")
