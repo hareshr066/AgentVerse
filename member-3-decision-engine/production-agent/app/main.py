@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
@@ -7,6 +7,9 @@ from app.api.v1.endpoints import production
 from app.core.config import settings
 from app.core.database import Base, engine
 from app.core.logging import logger
+from app.schemas.production_request import ProductionPlanRequest
+from app.schemas.production_response import ProductionPlanResponse
+from app.services.production_service import ProductionPlannerService
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,8 +28,8 @@ app = FastAPI(
     description=(
         f"**{settings.PROJECT_NAME}** — ManuSphere AI Decision Engine\n\n"
         "Receives demand forecast, inventory, and capacity data from peer agents "
-        "and returns an optimised production plan with machine scheduling, "
-        "capacity utilisation, and priority classification."
+        "and returns an optimized production plan with machine scheduling, "
+        "capacity utilization, priority classification, and bottleneck detection."
     ),
     lifespan=lifespan
 )
@@ -44,17 +47,18 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Versioned API routes  (/api/v1/...)
+# Versioned API routes (/api/v1/...) & routers
 # ---------------------------------------------------------------------------
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 app.include_router(production.router, prefix="/production-plans", tags=["production-plans"])
+app.include_router(production.router, tags=["Production Planning"])
 
 # ---------------------------------------------------------------------------
 # Top-level routes required by the spec
-# GET /        — welcome
-# GET /health  — liveness probe
-# POST /production-plan — main domain endpoint (also under /api/v1/)
+# GET /             — welcome
+# GET /health       — liveness probe
+# POST /production-plan — main domain endpoint
 # ---------------------------------------------------------------------------
 
 @app.get(
@@ -85,6 +89,20 @@ async def health_check() -> dict:
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
     }
+
+
+@app.post(
+    "/production-plan",
+    response_model=ProductionPlanResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate Production Plan",
+    description="Calculate production quantity, schedule, utilization, and priority.",
+    tags=["Production Planning"],
+)
+def create_production_plan_root(request: ProductionPlanRequest) -> ProductionPlanResponse:
+    """Root endpoint for generating an optimized production plan."""
+    service = ProductionPlannerService()
+    return service.generate_plan(request)
 
 
 # ---------------------------------------------------------------------------

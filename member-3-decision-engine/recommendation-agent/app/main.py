@@ -6,13 +6,16 @@ versioned API router, and exposes the top-level health and domain
 endpoints required by the spec (GET /, GET /health, POST /recommend).
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.api.v1.endpoints import recommendation
 from app.core.config import settings
 from app.core.logging import logger
+from app.schemas.recommendation_request import RecommendationRequest
+from app.schemas.recommendation_response import RecommendationResponse
+from app.services.recommendation_service import RecommendationService
 
 # ---------------------------------------------------------------------------
 # Application factory
@@ -22,11 +25,10 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description=(
-        f"**{settings.PROJECT_NAME}** — ManuSphere AI Decision Engine\n\n"
+        f"**{settings.PROJECT_NAME}** — Executive Recommendation Agent\n\n"
         "Aggregates outputs from the Demand Forecast, Inventory, Supply Chain, "
         "and Production Planning agents and returns an executive recommendation "
-        "report with production, inventory, supplier, and risk guidance.\n\n"
-        "Rule-based by default. Set `GEMINI_API_KEY` to activate AI-enhanced summaries."
+        "report with production, inventory, supplier, and risk guidance."
     ),
     contact={"name": "ManuSphere AI — Member 3"},
     license_info={"name": "MIT"},
@@ -45,14 +47,15 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Versioned API routes  (/api/v1/...)
+# Versioned API routes  (/api/v1/...) & Routers
 # ---------------------------------------------------------------------------
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 app.include_router(recommendation.router, prefix="/recommendations", tags=["recommendations"])
+app.include_router(recommendation.router, tags=["Recommendations"])
 
 # ---------------------------------------------------------------------------
-# Top-level routes required by the spec
+# Top-level routes required by the spec (GET /, GET /health, POST /recommend)
 # ---------------------------------------------------------------------------
 
 @app.get("/", summary="Welcome", tags=["Health"])
@@ -75,6 +78,20 @@ async def health_check() -> dict:
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
     }
+
+
+@app.post(
+    "/recommend",
+    response_model=RecommendationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate Executive Recommendation",
+    description="Accepts demand, inventory, supply chain, and production planning outputs and returns actionable business recommendations.",
+    tags=["Recommendations"],
+)
+async def recommend_root(request: RecommendationRequest) -> RecommendationResponse:
+    """Root endpoint for generating executive recommendations."""
+    service = RecommendationService()
+    return await service.recommend(request)
 
 
 # ---------------------------------------------------------------------------
