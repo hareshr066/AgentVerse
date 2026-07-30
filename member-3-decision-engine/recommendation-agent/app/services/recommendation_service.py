@@ -423,9 +423,9 @@ class RecommendationService:
         try:
             import asyncio
             full_prompt = f"{SYSTEM_PROMPT}\n\n{context_str}\n\nUSER QUESTION: {question}\n\nProvide an expert executive report:"
-            result = await asyncio.wait_for(self._gemini.get_recommendation(full_prompt), timeout=2.0)
+            result = await asyncio.wait_for(self._gemini.get_recommendation(full_prompt), timeout=10.0)
             if result and len(result.strip()) > 20:
                 return result.strip()
         except Exception as exc:
-            logger.warning("Gemini AI chat enhancement failed or timed out: %s", exc)
+            logger.warning("Groq/Gemini AI chat enhancement failed or timed out: %s", exc)
         return None

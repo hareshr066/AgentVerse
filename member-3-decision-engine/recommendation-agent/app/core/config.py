@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     DATABASE_URL: str = os.environ.get("DATABASE_URL", DEFAULT_NEON_URL)
-    GEMINI_API_KEY: Optional[str] = os.environ.get("GEMINI_API_KEY")
+    GROQ_API_KEY: Optional[str] = os.environ.get("GROQ_API_KEY")
+    GROK_API_KEY: Optional[str] = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
+    GEMINI_API_KEY: Optional[str] = os.environ.get("GROQ_API_KEY") or os.environ.get("GROK_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     PORT: Optional[int] = None
 
     model_config = SettingsConfigDict(
